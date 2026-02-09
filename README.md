@@ -30,6 +30,7 @@ A real-time cybersecurity simulation platform powered by Google Gemini AI. Featu
 
 - Node.js (v16 or higher)
 - Gemini API Key ([Get one here](https://aistudio.google.com/app/apikey))
+{Note demo app has a free tier API hence not completely scalable. Paid version makes the app scalable.}
 
 ## 🛠️ Setup
 
