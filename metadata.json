@@ -1,0 +1,5 @@
+{
+  "name": "CyberSentinel - Gemini Agentic Platform",
+  "description": "A continuously learning, autonomous Red vs. Blue team cybersecurity platform orchestrated by Gemini 3 Pro.",
+  "requestFramePermissions": []
+}
