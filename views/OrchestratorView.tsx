@@ -1,24 +1,29 @@
 import React, { useEffect, useState } from 'react';
 import { generateStrategicDecision } from '../services/geminiService';
 import { BrainCircuit, Sparkles, Database, Network } from 'lucide-react';
-import { Agent } from '../types';
+import { AgentModel } from '../models/AgentModel';
+import { AttackModel, DefenseModel } from '../models/AttackModel';
 
 interface OrchestratorViewProps {
-  redAgents: Agent[];
-  blueAgents: Agent[];
+  redAgents: AgentModel[];
+  blueAgents: AgentModel[];
+  attacks?: AttackModel[];
+  defenses?: DefenseModel[];
 }
 
-export const OrchestratorView: React.FC<OrchestratorViewProps> = ({ redAgents, blueAgents }) => {
+export const OrchestratorView: React.FC<OrchestratorViewProps> = ({ redAgents, blueAgents, attacks = [], defenses = [] }) => {
   const [thought, setThought] = useState<string>('');
   const [isThinking, setIsThinking] = useState(false);
   const [history, setHistory] = useState<string[]>([]);
 
   const handleReasoning = async () => {
     setIsThinking(true);
-    // Create context from current agents
-    const context = `Red Agents: ${redAgents.map(a => a.currentTask).join(', ')}. Blue Agents: ${blueAgents.map(a => a.currentTask).join(', ')}.`;
-    
-    const decision = await generateStrategicDecision(context);
+    const decision = await generateStrategicDecision(
+      attacks,
+      defenses,
+      redAgents.map(a => a.name),
+      blueAgents.map(a => a.name)
+    );
     setThought(decision);
     setHistory(prev => [decision, ...prev].slice(0, 5));
     setIsThinking(false);

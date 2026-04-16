@@ -1,5 +1,5 @@
 import React from 'react';
-import { Agent, LogEntry, MetricData, Threat } from '../types';
+import { LogEntry, MetricData, ThreatModel } from '../models/ThreatModel';
 import { Terminal } from '../components/Terminal';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import { ShieldAlert, ShieldCheck, Activity, Globe } from 'lucide-react';
@@ -7,7 +7,13 @@ import { ShieldAlert, ShieldCheck, Activity, Globe } from 'lucide-react';
 interface DashboardProps {
   metrics: MetricData[];
   logs: LogEntry[];
-  threats: Threat[];
+  threats: ThreatModel[];
+}
+
+interface DashboardProps {
+  metrics: MetricData[];
+  logs: LogEntry[];
+  threats: ThreatModel[];
 }
 
 export const DashboardView: React.FC<DashboardProps> = ({ metrics, logs, threats }) => {

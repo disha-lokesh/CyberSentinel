@@ -1,5 +1,5 @@
-import React, { useEffect, useRef } from 'react';
-import { LogEntry, AgentType } from '../types';
+import React, { useRef } from 'react';
+import { LogEntry } from '../models/ThreatModel';
 
 interface TerminalProps {
   logs: LogEntry[];
@@ -8,8 +8,6 @@ interface TerminalProps {
 
 export const Terminal: React.FC<TerminalProps> = ({ logs, title = "SYSTEM LOGS" }) => {
   const endRef = useRef<HTMLDivElement>(null);
-
-  // Removed auto-scroll to prevent jumping when user scrolls up
 
   return (
     <div className="flex flex-col h-full bg-slate-950 border border-slate-800 rounded-lg overflow-hidden font-mono text-xs shadow-2xl">
@@ -27,15 +25,15 @@ export const Terminal: React.FC<TerminalProps> = ({ logs, title = "SYSTEM LOGS" 
           <div key={log.id} className="flex gap-2 break-all opacity-90 hover:opacity-100 transition-opacity">
             <span className="text-slate-500 whitespace-nowrap">[{log.timestamp}]</span>
             <span className={`font-bold whitespace-nowrap ${
-              log.type === AgentType.RED ? 'text-red-400' : 
-              log.type === AgentType.BLUE ? 'text-blue-400' : 'text-purple-400'
+              log.agentType === 'RED' ? 'text-red-400' : 
+              log.agentType === 'BLUE' ? 'text-blue-400' : 'text-purple-400'
             }`}>
               {log.source}:
             </span>
             <span className={`${
               log.level === 'CRITICAL' ? 'text-red-500 font-bold' :
-              log.level === 'WARN' ? 'text-yellow-400' :
-              log.level === 'SUCCESS' ? 'text-green-400' :
+              log.level === 'WARN'     ? 'text-yellow-400' :
+              log.level === 'SUCCESS'  ? 'text-green-400' :
               'text-slate-300'
             }`}>
               {log.message}

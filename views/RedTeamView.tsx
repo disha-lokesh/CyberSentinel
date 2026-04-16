@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Agent, AgentStatus, AgentType, LogEntry } from '../types';
+import { AgentModel, AgentStatus, AgentType } from '../models/AgentModel';
+import { LogEntry } from '../models/ThreatModel';
 import { AgentCard } from '../components/AgentCard';
 import { Terminal } from '../components/Terminal';
 import { 
@@ -7,127 +8,99 @@ import {
   Play, Loader2, AlertTriangle 
 } from 'lucide-react';
 import { 
-  AttackType, 
-  AttackResult, 
-  executeRedTeamAttack,
-  progressAttack 
+  AttackType, AttackModel, AttackStatus,
+  executeRedTeamAttack, progressAttack 
 } from '../services/agentService';
 import { ATTACK_DESCRIPTIONS } from '../constants';
+import { getAgentSnapshots } from '../agents/AgentRegistry';
 
 interface RedTeamViewProps {
-  agents: Agent[];
-  onAgentUpdate: (agents: Agent[]) => void;
-  onLogGenerated: (log: any) => void;
-  onAttackLaunched?: (attack: AttackResult) => void;
+  agents: AgentModel[];
+  onAgentUpdate: (agents: AgentModel[]) => void;
+  onLogGenerated: (log: LogEntry) => void;
+  onAttackLaunched?: (attack: AttackModel) => void;
   logs: LogEntry[];
 }
 
 const ATTACK_ICONS: Record<AttackType, any> = {
-  [AttackType.SQL_INJECTION]: Database,
-  [AttackType.XSS]: Zap,
-  [AttackType.BRUTE_FORCE]: Lock,
-  [AttackType.PHISHING]: Mail,
-  [AttackType.RANSOMWARE]: FileX,
-  [AttackType.DDoS]: Wifi,
+  [AttackType.SQL_INJECTION]:        Database,
+  [AttackType.XSS]:                  Zap,
+  [AttackType.BRUTE_FORCE]:          Lock,
+  [AttackType.PHISHING]:             Mail,
+  [AttackType.RANSOMWARE]:           FileX,
+  [AttackType.DDOS]:                 Wifi,
   [AttackType.PRIVILEGE_ESCALATION]: ShieldAlert,
-  [AttackType.DATA_EXFILTRATION]: Database
+  [AttackType.DATA_EXFILTRATION]:    Database
 };
 
 export const RedTeamView: React.FC<RedTeamViewProps> = ({ 
-  agents, 
-  onAgentUpdate,
-  onLogGenerated,
-  onAttackLaunched,
-  logs
+  agents, onAgentUpdate, onLogGenerated, onAttackLaunched, logs
 }) => {
-  const [activeAttacks, setActiveAttacks] = useState<AttackResult[]>([]);
-  const [selectedAgent, setSelectedAgent] = useState<Agent | null>(agents[0] || null);
+  const [activeAttacks, setActiveAttacks] = useState<AttackModel[]>([]);
+  const [selectedAgentId, setSelectedAgentId] = useState<string>(agents[0]?.id || '');
   const [executingAttack, setExecutingAttack] = useState<string | null>(null);
+
+  const selectedAgent = agents.find(a => a.id === selectedAgentId) || agents[0];
 
   const handleAttackLaunch = async (attackType: AttackType) => {
     if (!selectedAgent || executingAttack) return;
-
     setExecutingAttack(attackType);
 
-    // Update agent status
-    const updatedAgents = agents.map(a => 
-      a.id === selectedAgent.id 
+    // Update agent status in registry snapshot
+    onAgentUpdate(agents.map(a =>
+      a.id === selectedAgent.id
         ? { ...a, status: AgentStatus.EXECUTING, currentTask: `Executing ${attackType}` }
         : a
-    );
-    onAgentUpdate(updatedAgents);
+    ));
 
-    // Generate log
     onLogGenerated({
       id: Date.now().toString(),
       timestamp: new Date().toLocaleTimeString(),
       source: selectedAgent.name,
       level: 'WARN',
       message: `Initiating ${attackType} attack`,
-      type: AgentType.RED
+      agentType: 'RED'
     });
 
     try {
-      // Execute attack using Gemini
-      const result = await executeRedTeamAttack(attackType, selectedAgent);
-      
+      const result = await executeRedTeamAttack(attackType);
       setActiveAttacks(prev => [...prev, result]);
+      if (onAttackLaunched) onAttackLaunched(result);
 
-      // Notify parent component
-      if (onAttackLaunched) {
-        onAttackLaunched(result);
-      }
-
-      // Log attack details
       onLogGenerated({
         id: (Date.now() + 1).toString(),
         timestamp: new Date().toLocaleTimeString(),
         source: selectedAgent.name,
         level: 'CRITICAL',
         message: `${attackType}: ${result.strategy}`,
-        type: AgentType.RED
+        agentType: 'RED'
       });
 
-      // Simulate attack progression
+      // Progress attack status
       setTimeout(() => {
-        setActiveAttacks(prev => 
-          prev.map(a => a.id === result.id ? progressAttack(a) : a)
-        );
-        if (onAttackLaunched) {
-          const updated = progressAttack(result);
-          onAttackLaunched(updated);
-        }
+        const p1 = progressAttack(result);
+        setActiveAttacks(prev => prev.map(a => a.id === result.id ? p1 : a));
+        if (onAttackLaunched) onAttackLaunched(p1);
       }, 2000);
 
       setTimeout(() => {
-        setActiveAttacks(prev => 
-          prev.map(a => a.id === result.id ? progressAttack(a) : a)
-        );
-        if (onAttackLaunched) {
-          const updated = progressAttack(progressAttack(result));
-          onAttackLaunched(updated);
-        }
+        const p2 = progressAttack(progressAttack(result));
+        setActiveAttacks(prev => prev.map(a => a.id === result.id ? p2 : a));
+        if (onAttackLaunched) onAttackLaunched(p2);
       }, 4000);
 
-      // Reset agent status
       setTimeout(() => {
-        const resetAgents = agents.map(a => 
-          a.id === selectedAgent.id 
-            ? { ...a, status: AgentStatus.IDLE, currentTask: 'Awaiting orders' }
-            : a
-        );
-        onAgentUpdate(resetAgents);
+        onAgentUpdate(getAgentSnapshots(AgentType.RED));
       }, 5000);
 
-    } catch (error) {
-      console.error('Attack execution failed:', error);
+    } catch (error: any) {
       onLogGenerated({
         id: Date.now().toString(),
         timestamp: new Date().toLocaleTimeString(),
         source: selectedAgent.name,
         level: 'CRITICAL',
-        message: `Attack failed: ${error}`,
-        type: AgentType.RED
+        message: `Attack failed: ${error.message}`,
+        agentType: 'RED'
       });
     } finally {
       setExecutingAttack(null);
@@ -162,7 +135,7 @@ export const RedTeamView: React.FC<RedTeamViewProps> = ({
           {agents.map(agent => (
             <div
               key={agent.id}
-              onClick={() => setSelectedAgent(agent)}
+              onClick={() => setSelectedAgentId(agent.id)}
               className={`cursor-pointer transition-all ${
                 selectedAgent?.id === agent.id
                   ? 'ring-2 ring-red-500 scale-105'
@@ -238,21 +211,16 @@ export const RedTeamView: React.FC<RedTeamViewProps> = ({
           </h3>
           <div className="space-y-3">
             {activeAttacks.slice(-5).reverse().map((attack) => (
-              <div
-                key={attack.id}
-                className="bg-slate-950 border border-red-900/50 rounded-lg p-4"
-              >
+              <div key={attack.id} className="bg-slate-950 border border-red-900/50 rounded-lg p-4">
                 <div className="flex items-start justify-between mb-2">
                   <div className="flex items-center gap-2">
                     <div className={`px-2 py-1 rounded text-xs font-bold ${
-                      attack.status === 'INITIATED' ? 'bg-yellow-900/30 text-yellow-400' :
-                      attack.status === 'IN_PROGRESS' ? 'bg-orange-900/30 text-orange-400' :
-                      attack.status === 'DETECTED' ? 'bg-red-900/30 text-red-400' :
-                      attack.status === 'BLOCKED' ? 'bg-blue-900/30 text-blue-400' :
+                      attack.status === AttackStatus.INITIATED   ? 'bg-yellow-900/30 text-yellow-400' :
+                      attack.status === AttackStatus.IN_PROGRESS ? 'bg-orange-900/30 text-orange-400' :
+                      attack.status === AttackStatus.DETECTED    ? 'bg-red-900/30 text-red-400' :
+                      attack.status === AttackStatus.BLOCKED     ? 'bg-blue-900/30 text-blue-400' :
                       'bg-green-900/30 text-green-400'
-                    }`}>
-                      {attack.status}
-                    </div>
+                    }`}>{attack.status}</div>
                     <span className="font-bold text-white">{attack.type}</span>
                   </div>
                   <span className="text-xs text-slate-500 font-mono">
@@ -260,9 +228,14 @@ export const RedTeamView: React.FC<RedTeamViewProps> = ({
                   </span>
                 </div>
                 <div className="text-sm text-slate-300 mb-2">{attack.strategy}</div>
-                <div className="text-xs text-slate-500 font-mono bg-slate-900 p-2 rounded">
-                  {attack.payload}
-                </div>
+                <div className="text-xs text-slate-500 font-mono bg-slate-900 p-2 rounded">{attack.payload}</div>
+                {attack.ragSourcesUsed?.length > 0 && (
+                  <div className="mt-2 flex gap-1 flex-wrap">
+                    {attack.ragSourcesUsed.map(s => (
+                      <span key={s} className="text-[10px] px-1.5 py-0.5 bg-purple-900/30 text-purple-400 rounded font-mono">{s}</span>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </div>

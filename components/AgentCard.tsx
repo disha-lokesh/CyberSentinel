@@ -1,22 +1,23 @@
 import React from 'react';
-import { Agent, AgentType, AgentStatus } from '../types';
+import { AgentModel, AgentType, AgentStatus } from '../models/AgentModel';
 import { Activity, Shield, Crosshair, Cpu } from 'lucide-react';
 
 interface AgentCardProps {
-  agent: Agent;
+  agent: AgentModel;
   compact?: boolean;
 }
 
 export const AgentCard: React.FC<AgentCardProps> = ({ agent, compact = false }) => {
   const isRed = agent.type === AgentType.RED;
-  
+
   const getStatusColor = (status: AgentStatus) => {
     switch(status) {
-      case AgentStatus.EXECUTING: return isRed ? 'text-red-400' : 'text-blue-400';
-      case AgentStatus.PLANNING: return 'text-purple-400';
-      case AgentStatus.IDLE: return 'text-slate-500';
-      case AgentStatus.ANALYZING: return 'text-yellow-400';
-      default: return 'text-slate-400';
+      case AgentStatus.EXECUTING:  return isRed ? 'text-red-400' : 'text-blue-400';
+      case AgentStatus.PLANNING:   return 'text-purple-400';
+      case AgentStatus.IDLE:       return 'text-slate-500';
+      case AgentStatus.ANALYZING:  return 'text-yellow-400';
+      case AgentStatus.MITIGATING: return 'text-green-400';
+      default:                     return 'text-slate-400';
     }
   };
 

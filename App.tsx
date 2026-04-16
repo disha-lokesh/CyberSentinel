@@ -7,8 +7,9 @@ import { RedTeamView } from './views/RedTeamView';
 import { BlueTeamView } from './views/BlueTeamView';
 import { ReportingView } from './views/ReportingView';
 import { INITIAL_RED_AGENTS, INITIAL_BLUE_AGENTS } from './constants';
-import { Agent, AgentType, LogEntry, MetricData, Threat } from './types';
-import { AttackResult } from './services/agentService';
+import { AgentModel } from './models/AgentModel';
+import { LogEntry, MetricData, ThreatModel } from './models/ThreatModel';
+import { AttackModel } from './models/AttackModel';
 
 // Simulation Service (Inline for simplicity)
 const generateMockMetric = (prev: MetricData, time: string): MetricData => {
@@ -25,22 +26,20 @@ const generateMockMetric = (prev: MetricData, time: string): MetricData => {
 
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState('dashboard');
-  const [redAgents, setRedAgents] = useState<Agent[]>(INITIAL_RED_AGENTS);
-  const [blueAgents, setBlueAgents] = useState<Agent[]>(INITIAL_BLUE_AGENTS);
+  const [redAgents, setRedAgents] = useState<AgentModel[]>(INITIAL_RED_AGENTS);
+  const [blueAgents, setBlueAgents] = useState<AgentModel[]>(INITIAL_BLUE_AGENTS);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [metrics, setMetrics] = useState<MetricData[]>([]);
-  const [threats, setThreats] = useState<Threat[]>([
-    { id: 't1', name: 'SQL Injection Campaign', severity: 'HIGH', status: 'ACTIVE', vector: 'Web Application', confidence: 92 },
-    { id: 't2', name: 'Brute Force SSH', severity: 'MEDIUM', status: 'MITIGATED', vector: 'Network', confidence: 88 }
+  const [threats, setThreats] = useState<ThreatModel[]>([
+    { id: 't1', name: 'SQL Injection Campaign', severity: 'HIGH', status: 'ACTIVE', vector: 'Web Application', confidence: 92, detectedAt: Date.now() },
+    { id: 't2', name: 'Brute Force SSH', severity: 'MEDIUM', status: 'MITIGATED', vector: 'Network', confidence: 88, detectedAt: Date.now() }
   ]);
-  const [activeAttacks, setActiveAttacks] = useState<AttackResult[]>([]);
+  const [activeAttacks, setActiveAttacks] = useState<AttackModel[]>([]);
 
-  const handleAttackLaunched = (attack: AttackResult) => {
+  const handleAttackLaunched = (attack: AttackModel) => {
     setActiveAttacks(prev => {
       const existing = prev.find(a => a.id === attack.id);
-      if (existing) {
-        return prev.map(a => a.id === attack.id ? attack : a);
-      }
+      if (existing) return prev.map(a => a.id === attack.id ? attack : a);
       return [...prev, attack];
     });
   };
@@ -79,7 +78,7 @@ const App: React.FC = () => {
       case 'workflow':
         return <WorkflowView />;
       case 'orchestrator':
-        return <OrchestratorView redAgents={redAgents} blueAgents={blueAgents} />;
+        return <OrchestratorView redAgents={redAgents} blueAgents={blueAgents} attacks={activeAttacks} />;
       case 'reporting':
         return <ReportingView />;
       case 'red-team':

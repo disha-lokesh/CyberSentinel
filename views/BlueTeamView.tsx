@@ -1,150 +1,113 @@
 import React, { useEffect, useState } from 'react';
-import { Agent, AgentStatus, AgentType, LogEntry } from '../types';
+import { AgentModel, AgentStatus, AgentType } from '../models/AgentModel';
+import { LogEntry } from '../models/ThreatModel';
 import { AgentCard } from '../components/AgentCard';
 import { Terminal } from '../components/Terminal';
 import { Shield, Activity, CheckCircle, XCircle, AlertTriangle } from 'lucide-react';
 import { 
-  AttackResult,
-  DefenseResult,
-  executeBlueTeamDefense,
-  progressDefense
+  AttackModel, DefenseModel, DefenseStatus,
+  executeBlueTeamDefense, progressDefense
 } from '../services/agentService';
+import { getAgentSnapshots } from '../agents/AgentRegistry';
 
 interface BlueTeamViewProps {
-  agents: Agent[];
-  onAgentUpdate: (agents: Agent[]) => void;
-  onLogGenerated: (log: any) => void;
-  incomingAttacks: AttackResult[];
+  agents: AgentModel[];
+  onAgentUpdate: (agents: AgentModel[]) => void;
+  onLogGenerated: (log: LogEntry) => void;
+  incomingAttacks: AttackModel[];
   logs: LogEntry[];
 }
 
 export const BlueTeamView: React.FC<BlueTeamViewProps> = ({ 
-  agents, 
-  onAgentUpdate,
-  onLogGenerated,
-  incomingAttacks,
-  logs
+  agents, onAgentUpdate, onLogGenerated, incomingAttacks, logs
 }) => {
-  const [defenses, setDefenses] = useState<DefenseResult[]>([]);
-  const [stats, setStats] = useState({
-    totalAttacks: 0,
-    blocked: 0,
-    analyzing: 0,
-    failed: 0
-  });
+  const [defenses, setDefenses] = useState<DefenseModel[]>([]);
+  const [stats, setStats] = useState({ totalAttacks: 0, blocked: 0, analyzing: 0, failed: 0 });
+  const [handledIds] = useState(new Set<string>());
 
-  // Automated defense system - responds to incoming attacks
   useEffect(() => {
-    const handleIncomingAttack = async (attack: AttackResult) => {
-      // Check if already defending against this attack
-      if (defenses.some(d => d.attackId === attack.id)) return;
+    const latestAttack = incomingAttacks[incomingAttacks.length - 1];
+    if (!latestAttack || latestAttack.status !== 'DETECTED') return;
+    if (handledIds.has(latestAttack.id)) return;
+    handledIds.add(latestAttack.id);
 
-      // Select best agent for this threat
+    const handleIncomingAttack = async (attack: AttackModel) => {
       const availableAgent = agents.find(a => a.status === AgentStatus.IDLE) || agents[0];
 
-      // Update agent status
-      const updatedAgents = agents.map(a => 
-        a.id === availableAgent.id 
+      onAgentUpdate(agents.map(a =>
+        a.id === availableAgent.id
           ? { ...a, status: AgentStatus.ANALYZING, currentTask: `Analyzing ${attack.type}` }
           : a
-      );
-      onAgentUpdate(updatedAgents);
+      ));
 
-      // Log detection
       onLogGenerated({
         id: Date.now().toString(),
         timestamp: new Date().toLocaleTimeString(),
         source: availableAgent.name,
         level: 'WARN',
         message: `Threat detected: ${attack.type}`,
-        type: AgentType.BLUE
+        agentType: 'BLUE'
       });
 
       try {
-        // Execute automated defense
-        const defense = await executeBlueTeamDefense(attack, availableAgent);
+        const defense = await executeBlueTeamDefense(attack);
         setDefenses(prev => [...prev, defense]);
 
-        // Log analysis
         onLogGenerated({
           id: (Date.now() + 1).toString(),
           timestamp: new Date().toLocaleTimeString(),
           source: availableAgent.name,
           level: 'INFO',
           message: `Analysis: ${defense.analysis}`,
-          type: AgentType.BLUE
+          agentType: 'BLUE'
         });
 
-        // Progress defense
         setTimeout(() => {
-          setDefenses(prev => 
-            prev.map(d => d.id === defense.id ? progressDefense(d, true) : d)
-          );
-
-          // Update agent to mitigating
-          const mitigatingAgents = agents.map(a => 
-            a.id === availableAgent.id 
+          setDefenses(prev => prev.map(d => d.id === defense.id ? progressDefense(d, true) : d));
+          onAgentUpdate(agents.map(a =>
+            a.id === availableAgent.id
               ? { ...a, status: AgentStatus.MITIGATING, currentTask: `Mitigating ${attack.type}` }
               : a
-          );
-          onAgentUpdate(mitigatingAgents);
+          ));
         }, 2000);
 
-        // Complete defense
         setTimeout(() => {
-          const success = Math.random() > 0.2; // 80% success rate
-          setDefenses(prev => 
-            prev.map(d => d.id === defense.id ? progressDefense(d, success) : d)
-          );
-
-          // Log result
+          const success = Math.random() > 0.15;
+          setDefenses(prev => prev.map(d => d.id === defense.id ? progressDefense(d, success) : d));
           onLogGenerated({
             id: (Date.now() + 2).toString(),
             timestamp: new Date().toLocaleTimeString(),
             source: availableAgent.name,
             level: success ? 'SUCCESS' : 'CRITICAL',
-            message: success 
-              ? `✓ Attack blocked: ${defense.mitigation}` 
-              : `✗ Mitigation failed - Manual intervention required`,
-            type: AgentType.BLUE
+            message: success
+              ? `✓ Attack blocked: ${defense.mitigation}`
+              : `✗ Mitigation failed - escalating`,
+            agentType: 'BLUE'
           });
-
-          // Reset agent
-          const resetAgents = agents.map(a => 
-            a.id === availableAgent.id 
-              ? { ...a, status: AgentStatus.IDLE, currentTask: 'Monitoring for threats' }
-              : a
-          );
-          onAgentUpdate(resetAgents);
+          onAgentUpdate(getAgentSnapshots(AgentType.BLUE));
         }, 4000);
 
-      } catch (error) {
-        console.error('Defense execution failed:', error);
+      } catch (error: any) {
         onLogGenerated({
           id: Date.now().toString(),
           timestamp: new Date().toLocaleTimeString(),
           source: availableAgent.name,
           level: 'CRITICAL',
-          message: `Defense system error: ${error}`,
-          type: AgentType.BLUE
+          message: `Defense error: ${error.message}`,
+          agentType: 'BLUE'
         });
       }
     };
 
-    // Monitor for new attacks
-    const latestAttack = incomingAttacks[incomingAttacks.length - 1];
-    if (latestAttack && latestAttack.status === 'DETECTED') {
-      handleIncomingAttack(latestAttack);
-    }
+    handleIncomingAttack(latestAttack);
   }, [incomingAttacks]);
 
-  // Update stats
   useEffect(() => {
     setStats({
       totalAttacks: defenses.length,
-      blocked: defenses.filter(d => d.status === 'BLOCKED').length,
-      analyzing: defenses.filter(d => d.status === 'ANALYZING' || d.status === 'MITIGATING').length,
-      failed: defenses.filter(d => d.status === 'FAILED').length
+      blocked:   defenses.filter(d => d.status === DefenseStatus.BLOCKED).length,
+      analyzing: defenses.filter(d => d.status === DefenseStatus.ANALYZING || d.status === DefenseStatus.MITIGATING).length,
+      failed:    defenses.filter(d => d.status === DefenseStatus.FAILED).length
     });
   }, [defenses]);
 
@@ -233,15 +196,15 @@ export const BlueTeamView: React.FC<BlueTeamViewProps> = ({
                   <div className="flex items-start justify-between mb-2">
                     <div className="flex items-center gap-2">
                       <div className={`px-2 py-1 rounded text-xs font-bold ${
-                        defense.status === 'ANALYZING' ? 'bg-yellow-900/30 text-yellow-400' :
-                        defense.status === 'MITIGATING' ? 'bg-blue-900/30 text-blue-400' :
-                        defense.status === 'BLOCKED' ? 'bg-green-900/30 text-green-400' :
+                        defense.status === DefenseStatus.ANALYZING  ? 'bg-yellow-900/30 text-yellow-400' :
+                        defense.status === DefenseStatus.MITIGATING ? 'bg-blue-900/30 text-blue-400' :
+                        defense.status === DefenseStatus.BLOCKED    ? 'bg-green-900/30 text-green-400' :
                         'bg-red-900/30 text-red-400'
                       }`}>
                         {defense.status}
                       </div>
                       <span className="font-bold text-white">
-                        vs {attack?.type || 'Unknown Threat'}
+                        vs {incomingAttacks.find(a => a.id === defense.attackId)?.type || 'Unknown Threat'}
                       </span>
                     </div>
                     <div className="text-right">
@@ -259,6 +222,13 @@ export const BlueTeamView: React.FC<BlueTeamViewProps> = ({
                   <div className="text-sm text-blue-300">
                     <span className="text-slate-500">Mitigation:</span> {defense.mitigation}
                   </div>
+                  {defense.ragSourcesUsed?.length > 0 && (
+                    <div className="mt-2 flex gap-1 flex-wrap">
+                      {defense.ragSourcesUsed.map(s => (
+                        <span key={s} className="text-[10px] px-1.5 py-0.5 bg-purple-900/30 text-purple-400 rounded font-mono">{s}</span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               );
             })}

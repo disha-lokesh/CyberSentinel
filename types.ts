@@ -1,57 +1,14 @@
-export enum AgentType {
-  RED = 'RED',
-  BLUE = 'BLUE',
-  ORCHESTRATOR = 'ORCHESTRATOR',
-  MCP = 'MCP'
-}
+// ============================================================
+// TYPES - Re-exports from models layer for backward compatibility
+// ============================================================
 
-export enum AgentStatus {
-  IDLE = 'IDLE',
-  PLANNING = 'PLANNING',
-  EXECUTING = 'EXECUTING',
-  ANALYZING = 'ANALYZING',
-  MITIGATING = 'MITIGATING',
-  WAITING = 'WAITING'
-}
+export { AgentType, AgentStatus }    from './models/AgentModel';
+export type { AgentModel as Agent }  from './models/AgentModel';
+export type { LogEntry, MetricData, ThreatModel as Threat } from './models/ThreatModel';
+export type { AttackModel, DefenseModel } from './models/AttackModel';
+export { AttackType }                from './models/AttackModel';
 
-export interface Agent {
-  id: string;
-  name: string;
-  role: string;
-  type: AgentType;
-  status: AgentStatus;
-  currentTask: string;
-  efficiency: number; // 0-100
-  logs: string[];
-}
-
-export interface LogEntry {
-  id: string;
-  timestamp: string;
-  source: string;
-  level: 'INFO' | 'WARN' | 'CRITICAL' | 'SUCCESS';
-  message: string;
-  type: AgentType;
-}
-
-export interface MetricData {
-  time: string;
-  attacks: number;
-  blocked: number;
-  incidents: number;
-}
-
-export interface Threat {
-  id: string;
-  name: string;
-  severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
-  status: 'ACTIVE' | 'CONTAINED' | 'MITIGATED';
-  vector: string;
-  confidence: number;
-}
-
-// --- Workflow & MCP Types ---
-
+// Legacy MCPTool / WorkflowNode types kept for WorkflowView
 export interface MCPTool {
   name: string;
   description: string;
@@ -66,7 +23,6 @@ export interface WorkflowNode {
   status: 'idle' | 'running' | 'success' | 'error';
   x: number;
   y: number;
-  data?: any;
   agentId?: string;
   icon?: any;
 }
@@ -76,7 +32,6 @@ export interface WorkflowEdge {
   source: string;
   target: string;
   animated: boolean;
-  label?: string;
 }
 
 export interface WorkflowEvent {

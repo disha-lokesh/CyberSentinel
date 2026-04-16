@@ -1,77 +1,21 @@
-import { Agent, AgentType, AgentStatus } from './types';
-import { createTrainedAgent } from './services/agentService';
+// ============================================================
+// CONSTANTS - Uses AgentRegistry for trained agent instances
+// ============================================================
 
-// Red Team Agents - Manual Attack Execution
-export const INITIAL_RED_AGENTS: Agent[] = [
-  createTrainedAgent(
-    'r-1',
-    'Recon-Alpha',
-    'Reconnaissance Specialist',
-    AgentType.RED,
-    ['Network Scanning', 'Port Discovery', 'Service Enumeration', 'OSINT']
-  ),
-  createTrainedAgent(
-    'r-2',
-    'Exploit-Dev',
-    'Exploitation Engineer',
-    AgentType.RED,
-    ['SQL Injection', 'XSS', 'Buffer Overflow', 'Zero-Day Research']
-  ),
-  createTrainedAgent(
-    'r-3',
-    'Social-Engineer',
-    'Social Engineering Specialist',
-    AgentType.RED,
-    ['Phishing', 'Pretexting', 'Credential Harvesting', 'OSINT']
-  ),
-  createTrainedAgent(
-    'r-4',
-    'Crypto-Breaker',
-    'Cryptanalysis Expert',
-    AgentType.RED,
-    ['Password Cracking', 'Brute Force', 'Rainbow Tables', 'Hash Analysis']
-  )
-];
+import { getAgentSnapshots } from './agents/AgentRegistry';
+import { AgentType }         from './models/AgentModel';
+import { AttackType }        from './models/AttackModel';
 
-// Blue Team Agents - Automated Defense
-export const INITIAL_BLUE_AGENTS: Agent[] = [
-  createTrainedAgent(
-    'b-1',
-    'Sentinel-AI',
-    'Threat Detection System',
-    AgentType.BLUE,
-    ['SIEM Analysis', 'Anomaly Detection', 'Pattern Recognition', 'Real-time Monitoring']
-  ),
-  createTrainedAgent(
-    'b-2',
-    'Guardian-Firewall',
-    'Perimeter Defense',
-    AgentType.BLUE,
-    ['Traffic Filtering', 'IP Blocking', 'Rate Limiting', 'DDoS Mitigation']
-  ),
-  createTrainedAgent(
-    'b-3',
-    'Forensic-Bot',
-    'Incident Response',
-    AgentType.BLUE,
-    ['Log Analysis', 'Attack Attribution', 'Evidence Collection', 'Root Cause Analysis']
-  ),
-  createTrainedAgent(
-    'b-4',
-    'Patch-Master',
-    'Vulnerability Management',
-    AgentType.BLUE,
-    ['CVE Monitoring', 'Patch Deployment', 'Configuration Hardening', 'Compliance']
-  )
-];
+export const INITIAL_RED_AGENTS  = getAgentSnapshots(AgentType.RED);
+export const INITIAL_BLUE_AGENTS = getAgentSnapshots(AgentType.BLUE);
 
-export const ATTACK_DESCRIPTIONS = {
-  'SQL Injection': 'Inject malicious SQL queries to bypass authentication or extract data',
-  'Cross-Site Scripting': 'Inject client-side scripts to steal cookies or session tokens',
-  'Brute Force': 'Systematically attempt password combinations to gain unauthorized access',
-  'Phishing Campaign': 'Social engineering attack to harvest credentials via fake login pages',
-  'Ransomware Simulation': 'Simulate file encryption and ransom demand scenarios',
-  'DDoS Attack': 'Overwhelm target with traffic to cause service disruption',
-  'Privilege Escalation': 'Exploit vulnerabilities to gain elevated system privileges',
-  'Data Exfiltration': 'Extract sensitive data from the target system'
+export const ATTACK_DESCRIPTIONS: Record<AttackType, string> = {
+  [AttackType.SQL_INJECTION]:         'Inject malicious SQL to bypass auth or extract data',
+  [AttackType.XSS]:                   'Inject client-side scripts to steal sessions or cookies',
+  [AttackType.BRUTE_FORCE]:           'Systematically crack passwords via dictionary/hybrid attacks',
+  [AttackType.PHISHING]:              'Social engineering to harvest credentials via fake pages',
+  [AttackType.RANSOMWARE]:            'Simulate AES-256 file encryption and ransom demand',
+  [AttackType.DDOS]:                  'Overwhelm target with volumetric or application-layer traffic',
+  [AttackType.PRIVILEGE_ESCALATION]:  'Exploit SUID/sudo/kernel bugs to gain root/admin access',
+  [AttackType.DATA_EXFILTRATION]:     'Covertly extract sensitive data via DNS tunneling or HTTPS'
 };
