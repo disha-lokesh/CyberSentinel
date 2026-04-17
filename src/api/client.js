@@ -1,7 +1,7 @@
 /**
  * API client — all calls go to the Python FastAPI backend.
  */
-const BASE = import.meta.env.VITE_API_URL || "http://localhost:8000/api";
+const BASE = import.meta.env.VITE_API_URL || "http://localhost:8001/api";
 
 export const api = {
   getRedAgents:    () => fetch(`${BASE}/agents/red`).then(r => r.json()),
@@ -27,7 +27,7 @@ export const api = {
  * @param {function} onMessage - callback(event, payload)
  */
 export function connectWS(onMessage) {
-  const wsUrl = (import.meta.env.VITE_API_URL || "http://localhost:8000")
+  const wsUrl = (import.meta.env.VITE_API_URL || "http://localhost:8001")
     .replace("http", "ws") + "/api/ws";
 
   const ws = new WebSocket(wsUrl);

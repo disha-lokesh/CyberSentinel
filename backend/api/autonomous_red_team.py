@@ -143,7 +143,11 @@ async def _try_gemini_attack(attack_type: AttackType, target: str, agent_name: s
         agent = ATTACK_AGENT_MAP[attack_type]
         return await agent.execute_attack(attack_type, target)
     except Exception as e:
-        logger.warning(f"Gemini unavailable ({e.__class__.__name__}), using simulation for {attack_type.value}")
+        err_msg = str(e).lower()
+        if "429" in err_msg or "rate" in err_msg or "quota" in err_msg:
+            logger.warning(f"⚠️ Gemini rate limit hit, using simulation for {attack_type.value}")
+        else:
+            logger.warning(f"Gemini unavailable ({e.__class__.__name__}), using simulation for {attack_type.value}")
         fb = FALLBACK_STRATEGIES[attack_type]
         return AttackResult(
             id=f"attack-{uuid.uuid4().hex[:8]}",
@@ -168,7 +172,11 @@ async def _try_gemini_defense(attack: AttackResult, defense_agent_name: str) -> 
         agent = DEFENSE_AGENT_MAP[attack.type]
         return await agent.analyze_and_defend(attack)
     except Exception as e:
-        logger.warning(f"Gemini unavailable ({e.__class__.__name__}), using simulation for defense")
+        err_msg = str(e).lower()
+        if "429" in err_msg or "rate" in err_msg or "quota" in err_msg:
+            logger.warning(f"⚠️ Gemini rate limit hit, using simulation for defense")
+        else:
+            logger.warning(f"Gemini unavailable ({e.__class__.__name__}), using simulation for defense")
         fb = FALLBACK_DEFENSES[attack.type]
         return DefenseResult(
             id=f"defense-{uuid.uuid4().hex[:8]}",
@@ -226,8 +234,8 @@ async def run_autonomous_red_team():
         except Exception as e:
             logger.error(f"Red Team loop error: {e}")
 
-        # Wait 15-45 seconds before next attack
-        await asyncio.sleep(random.randint(15, 45))
+        # Wait 60-120 seconds between attacks (respects free tier: 15 req/min)
+        await asyncio.sleep(random.randint(60, 120))
 
 
 async def _auto_defend(attack: AttackResult, defense_agent_name: str):
