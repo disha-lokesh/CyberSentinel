@@ -1,94 +1,59 @@
-import { useState, useRef } from "react";
-import { Play, RotateCcw } from "lucide-react";
+import { useState, useEffect, useMemo } from "react";
+import { Zap, Shield, Database, Server, Activity } from "lucide-react";
 
-const INITIAL_NODES = [
-  { id: "threat-intel", label: "Threat Intel", sub: "Data Source",   x: 40,  y: 180, color: "purple", status: "idle" },
-  { id: "recon",        label: "Recon-Alpha",  sub: "Red Agent",     x: 220, y: 80,  color: "red",    status: "idle" },
-  { id: "exploit",      label: "Exploit-Dev",  sub: "Red Agent",     x: 220, y: 280, color: "red",    status: "idle" },
-  { id: "target",       label: "Target System",sub: "Enterprise",    x: 420, y: 180, color: "slate",  status: "idle" },
-  { id: "sentinel",     label: "Sentinel-AI",  sub: "Blue Agent",    x: 620, y: 80,  color: "blue",   status: "idle" },
-  { id: "guardian",     label: "Guardian-FW",  sub: "Blue Agent",    x: 620, y: 280, color: "blue",   status: "idle" },
-  { id: "soc-log",      label: "SOC Logs",     sub: "Analyst View",  x: 820, y: 180, color: "green",  status: "idle" },
-];
+// Node positions for the workflow graph
+const NODE_POSITIONS = {
+  "threat-intel": { x: 50,  y: 200 },
+  "red-agent":    { x: 250, y: 200 },
+  "target":       { x: 450, y: 200 },
+  "blue-agent":   { x: 650, y: 200 },
+  "soc":          { x: 850, y: 200 },
+};
 
-const EDGES = [
-  { from: "threat-intel", to: "recon"    },
-  { from: "threat-intel", to: "exploit"  },
-  { from: "recon",        to: "target"   },
-  { from: "exploit",      to: "target"   },
-  { from: "target",       to: "sentinel" },
-  { from: "target",       to: "guardian" },
-  { from: "sentinel",     to: "soc-log"  },
-  { from: "guardian",     to: "soc-log"  },
-];
+const NODE_W = 140, NODE_H = 70;
 
-const SEQUENCE = [
-  { id: "threat-intel", log: "Threat intel feed ingested" },
-  { id: "recon",        log: "Recon-Alpha: scanning target subnet 192.168.1.0/24" },
-  { id: "exploit",      log: "Exploit-Dev: crafting SQL injection payload" },
-  { id: "target",       log: "Target system: attack detected on /api/login" },
-  { id: "sentinel",     log: "Sentinel-AI: anomaly detected — CRITICAL" },
-  { id: "guardian",     log: "Guardian-FW: WAF rule deployed, IP blocked" },
-  { id: "soc-log",      log: "SOC: incident logged, analyst notified" },
-];
+export default function WorkflowView({ attacks, defenses, redAgents, blueAgents }) {
+  const [activeFlow, setActiveFlow] = useState(null);
 
-const NODE_W = 130, NODE_H = 56;
+  // Build live workflow from latest attack/defense pair
+  const liveWorkflow = useMemo(() => {
+    if (!attacks.length) return null;
+    
+    const latestAttack = attacks[attacks.length - 1];
+    const relatedDefense = defenses.find(d => d.attack_id === latestAttack.id);
 
-export default function WorkflowView({ attacks, defenses }) {
-  const [nodes, setNodes]   = useState(INITIAL_NODES);
-  const [logs, setLogs]     = useState([]);
-  const [running, setRunning] = useState(false);
-  const [dragging, setDragging] = useState(null);
-  const [offset, setOffset]   = useState({ x: 0, y: 0 });
-  const svgRef = useRef(null);
+    return {
+      attack: latestAttack,
+      defense: relatedDefense,
+      redAgent: latestAttack.agent_name,
+      blueAgent: relatedDefense?.agent_name || "Pending...",
+      nodes: [
+        { id: "threat-intel", label: "Threat Intel",     sub: "Data Source",   icon: Database, status: "done",    color: "purple" },
+        { id: "red-agent",    label: latestAttack.agent_name, sub: "Red Team",  icon: Zap,      status: getAttackNodeStatus(latestAttack), color: "red" },
+        { id: "target",       label: latestAttack.target.split(" ")[0], sub: "Target System", icon: Server, status: latestAttack.status === "DETECTED" || latestAttack.status === "BLOCKED" ? "done" : "active", color: "slate" },
+        { id: "blue-agent",   label: relatedDefense?.agent_name || "Detecting...", sub: "Blue Team", icon: Shield, status: getDefenseNodeStatus(relatedDefense), color: "blue" },
+        { id: "soc",          label: "SOC Dashboard",   sub: "Analyst View",  icon: Activity, status: relatedDefense?.status === "BLOCKED" || relatedDefense?.status === "FAILED" ? "done" : "idle", color: "green" },
+      ],
+    };
+  }, [attacks, defenses]);
 
-  const setStatus = (id, status) =>
-    setNodes(prev => prev.map(n => n.id === id ? { ...n, status } : n));
+  useEffect(() => {
+    if (liveWorkflow) setActiveFlow(liveWorkflow);
+  }, [liveWorkflow]);
 
-  const addLog = (msg) =>
-    setLogs(prev => [{ id: Date.now(), msg, ts: new Date().toLocaleTimeString() }, ...prev].slice(0, 20));
+  if (!activeFlow) {
+    return (
+      <div className="flex items-center justify-center h-96 bg-slate-900/50 border border-slate-800 rounded-xl">
+        <div className="text-center">
+          <Activity size={48} className="text-slate-600 mx-auto mb-4 animate-pulse" />
+          <p className="text-slate-400 font-mono">Waiting for attack activity...</p>
+          <p className="text-slate-600 text-sm mt-2">Backend must be running on port 8000</p>
+        </div>
+      </div>
+    );
+  }
 
-  const run = async () => {
-    if (running) return;
-    setRunning(true);
-    setLogs([]);
-    setNodes(INITIAL_NODES);
-
-    for (const step of SEQUENCE) {
-      setStatus(step.id, "running");
-      addLog(step.log);
-      await new Promise(r => setTimeout(r, 1200));
-      setStatus(step.id, "done");
-    }
-    setRunning(false);
-  };
-
-  const reset = () => {
-    setNodes(INITIAL_NODES);
-    setLogs([]);
-    setRunning(false);
-  };
-
-  // Drag handlers
-  const onMouseDown = (e, id) => {
-    const node = nodes.find(n => n.id === id);
-    setDragging(id);
-    setOffset({ x: e.clientX - node.x, y: e.clientY - node.y });
-    e.preventDefault();
-  };
-
-  const onMouseMove = (e) => {
-    if (!dragging || !svgRef.current) return;
-    const rect = svgRef.current.getBoundingClientRect();
-    const x = Math.max(0, Math.min(e.clientX - rect.left - offset.x, rect.width - NODE_W));
-    const y = Math.max(0, Math.min(e.clientY - rect.top - offset.y, rect.height - NODE_H));
-    setNodes(prev => prev.map(n => n.id === dragging ? { ...n, x, y } : n));
-  };
-
-  const nodeMap = Object.fromEntries(nodes.map(n => [n.id, n]));
-
-  const borderColor = { red: "#ef4444", blue: "#3b82f6", purple: "#8b5cf6", green: "#10b981", slate: "#475569" };
-  const glowColor   = { red: "rgba(239,68,68,0.3)", blue: "rgba(59,130,246,0.3)", purple: "rgba(139,92,246,0.3)", green: "rgba(16,185,129,0.3)", slate: "rgba(71,85,105,0.2)" };
+  const { attack, defense, nodes } = activeFlow;
 
   return (
     <div className="flex gap-4 h-[calc(100vh-10rem)]">
@@ -100,116 +65,195 @@ export default function WorkflowView({ attacks, defenses }) {
           backgroundSize: "30px 30px"
         }} />
 
-        {/* Controls */}
-        <div className="absolute top-4 right-4 z-20 flex gap-2">
-          <button onClick={run} disabled={running}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-sm transition-all ${running ? "bg-slate-800 text-slate-500 cursor-not-allowed" : "bg-emerald-600 hover:bg-emerald-500 text-white"}`}>
-            <Play size={14} />{running ? "Running..." : "Execute"}
-          </button>
-          <button onClick={reset} className="flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-sm bg-slate-700 hover:bg-slate-600 text-white transition-all">
-            <RotateCcw size={14} />Reset
-          </button>
-        </div>
-
-        <div className="absolute top-4 left-4 z-20 bg-slate-950/80 border border-slate-700 rounded-lg px-3 py-1.5">
-          <p className="text-xs text-slate-400">💡 Drag nodes · Click Execute to simulate</p>
+        {/* Title */}
+        <div className="absolute top-4 left-4 z-20 bg-slate-950/90 border border-slate-700 rounded-lg px-4 py-2">
+          <p className="text-xs text-slate-400">
+            <span className="text-white font-bold">Live:</span> {attack.type} → {defense ? defense.status : "Detecting..."}
+          </p>
         </div>
 
         {/* SVG edges */}
-        <svg
-          ref={svgRef}
-          className="absolute inset-0 w-full h-full"
-          onMouseMove={onMouseMove}
-          onMouseUp={() => setDragging(null)}
-          onMouseLeave={() => setDragging(null)}
-        >
+        <svg className="absolute inset-0 w-full h-full pointer-events-none">
           <defs>
             <marker id="arr" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
-              <polygon points="0 0,8 3,0 6" fill="#475569" />
+              <polygon points="0 0,8 3,0 6" fill="#64748b" />
             </marker>
             <marker id="arr-active" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
               <polygon points="0 0,8 3,0 6" fill="#10b981" />
             </marker>
           </defs>
-          {EDGES.map((e, i) => {
-            const s = nodeMap[e.from], t = nodeMap[e.to];
-            if (!s || !t) return null;
+          {["threat-intel→red-agent", "red-agent→target", "target→blue-agent", "blue-agent→soc"].map((edge, i) => {
+            const [from, to] = edge.split("→");
+            const s = NODE_POSITIONS[from], t = NODE_POSITIONS[to];
+            const sNode = nodes.find(n => n.id === from);
+            const active = sNode?.status === "active" || sNode?.status === "done";
             const x1 = s.x + NODE_W, y1 = s.y + NODE_H / 2;
             const x2 = t.x,          y2 = t.y + NODE_H / 2;
-            const active = s.status === "running" || s.status === "done";
             return (
               <path key={i}
-                d={`M${x1},${y1} C${x1+40},${y1} ${x2-40},${y2} ${x2},${y2}`}
+                d={`M${x1},${y1} C${x1+50},${y1} ${x2-50},${y2} ${x2},${y2}`}
                 fill="none"
-                stroke={active ? "#10b981" : "#334155"}
-                strokeWidth={active ? 2 : 1.5}
+                stroke={active ? "#10b981" : "#475569"}
+                strokeWidth={active ? 3 : 2}
                 markerEnd={active ? "url(#arr-active)" : "url(#arr)"}
-                opacity={active ? 1 : 0.5}
+                opacity={active ? 1 : 0.4}
+                className={active ? "animate-pulse" : ""}
               />
             );
           })}
         </svg>
 
         {/* Nodes */}
-        {nodes.map(n => (
-          <div
-            key={n.id}
-            className={`rounded-lg border-2 cursor-grab active:cursor-grabbing select-none transition-all duration-300 flex flex-col justify-center px-3 ${
-              n.status === "running" ? "scale-110 bg-slate-800" :
-              n.status === "done"    ? "bg-slate-900/80" : "bg-slate-950"
-            }`}
-            style={{
-              left: n.x, top: n.y, width: NODE_W, height: NODE_H, position: "absolute",
-              borderColor: n.status === "running" ? "#facc15" : n.status === "done" ? borderColor[n.color] : "#1e293b",
-              boxShadow: n.status === "running" ? `0 0 20px ${glowColor[n.color]}` : "none",
-            }}
-            onMouseDown={(e) => onMouseDown(e, n.id)}
-          >
-            <div className="text-xs font-bold text-white truncate">{n.label}</div>
-            <div className="text-[10px] text-slate-500 uppercase tracking-wide">{n.sub}</div>
-            {n.status === "running" && (
-              <div className="text-[9px] text-yellow-400 font-mono animate-pulse mt-0.5">● executing</div>
-            )}
-            {n.status === "done" && (
-              <div className="text-[9px] text-emerald-400 font-mono mt-0.5">✓ done</div>
-            )}
-          </div>
-        ))}
+        {nodes.map(n => {
+          const pos = NODE_POSITIONS[n.id];
+          const Icon = n.icon;
+          const borderColors = {
+            active:  "#facc15",
+            done:    { red: "#ef4444", blue: "#3b82f6", purple: "#8b5cf6", green: "#10b981", slate: "#64748b" }[n.color],
+            idle:    "#1e293b",
+          };
+          return (
+            <div
+              key={n.id}
+              className={`absolute rounded-lg border-2 flex flex-col justify-center px-4 transition-all duration-300 ${
+                n.status === "active" ? "scale-110 bg-slate-800 shadow-2xl" :
+                n.status === "done"   ? "bg-slate-900/80" : "bg-slate-950"
+              }`}
+              style={{
+                left: pos.x, top: pos.y, width: NODE_W, height: NODE_H,
+                borderColor: borderColors[n.status] || borderColors.idle,
+                boxShadow: n.status === "active" ? `0 0 30px rgba(250,204,21,0.4)` : "none",
+              }}
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <Icon size={18} className="text-white" />
+                <span className="text-sm font-bold text-white truncate">{n.label}</span>
+              </div>
+              <div className="text-[10px] text-slate-500 uppercase tracking-wide">{n.sub}</div>
+              {n.status === "active" && (
+                <div className="text-[9px] text-yellow-400 font-mono animate-pulse mt-1">● executing</div>
+              )}
+              {n.status === "done" && (
+                <div className="text-[9px] text-emerald-400 font-mono mt-1">✓ complete</div>
+              )}
+            </div>
+          );
+        })}
       </div>
 
-      {/* Log panel */}
-      <div className="w-72 flex flex-col bg-slate-950 border border-slate-800 rounded-xl overflow-hidden">
-        <div className="px-4 py-2.5 bg-slate-900 border-b border-slate-800 text-xs font-bold text-slate-400 tracking-wider">
-          WORKFLOW LOGS
+      {/* Details panel */}
+      <div className="w-80 flex flex-col bg-slate-950 border border-slate-800 rounded-xl overflow-hidden">
+        <div className="px-4 py-3 bg-slate-900 border-b border-slate-800 text-xs font-bold text-slate-400 tracking-wider">
+          LIVE WORKFLOW DETAILS
         </div>
-        <div className="flex-1 overflow-y-auto p-3 space-y-2 font-mono text-xs">
-          {logs.length === 0 && <span className="text-slate-600 italic">Click Execute to run...</span>}
-          {logs.map(l => (
-            <div key={l.id} className="p-2 bg-slate-900/50 rounded border border-slate-800">
-              <div className="text-slate-600 text-[10px] mb-0.5">{l.ts}</div>
-              <div className="text-slate-300">{l.msg}</div>
+        <div className="flex-1 overflow-y-auto p-4 space-y-4 text-sm">
+          {/* Attack */}
+          <div className="bg-red-950/20 border border-red-900/40 rounded-lg p-3">
+            <div className="flex items-center gap-2 mb-2">
+              <Zap size={14} className="text-red-400" />
+              <span className="font-bold text-red-400 text-xs uppercase">Attack</span>
+              <StatusBadge status={attack.status} />
             </div>
-          ))}
-        </div>
+            <div className="text-xs text-white font-bold mb-1">{attack.type}</div>
+            <div className="text-xs text-slate-400 mb-2">{attack.agent_name} → {attack.target}</div>
+            <div className="text-xs text-slate-300 leading-relaxed">{attack.strategy}</div>
+            <div className="mt-2 p-2 bg-slate-950 rounded border border-slate-800 font-mono text-[10px] text-slate-500 break-all">
+              {attack.payload}
+            </div>
+            {attack.rag_sources_used?.length > 0 && (
+              <div className="mt-2 flex gap-1 flex-wrap">
+                {attack.rag_sources_used.map(s => (
+                  <span key={s} className="text-[9px] px-1 py-0.5 bg-purple-900/30 text-purple-400 rounded font-mono">{s}</span>
+                ))}
+              </div>
+            )}
+          </div>
 
-        {/* Live attacks from backend */}
-        {attacks?.length > 0 && (
-          <div className="border-t border-slate-800 p-3">
-            <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Live Attacks</div>
-            <div className="space-y-1">
-              {attacks.slice(-3).reverse().map(a => (
-                <div key={a.id} className="text-[10px] flex items-center gap-1.5">
-                  <div className="w-1.5 h-1.5 bg-red-500 rounded-full shrink-0" />
-                  <span className="text-slate-400 truncate">{a.type}</span>
-                  <span className={`ml-auto shrink-0 ${a.status === "BLOCKED" ? "text-green-400" : "text-red-400"}`}>
-                    {a.status}
-                  </span>
+          {/* Defense */}
+          {defense ? (
+            <div className="bg-blue-950/20 border border-blue-900/40 rounded-lg p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <Shield size={14} className="text-blue-400" />
+                <span className="font-bold text-blue-400 text-xs uppercase">Defense</span>
+                <StatusBadge status={defense.status} />
+              </div>
+              <div className="text-xs text-white font-bold mb-1">{defense.agent_name}</div>
+              <div className="text-xs text-slate-400 mb-2">Confidence: {defense.confidence}%</div>
+              <div className="text-xs text-slate-300 leading-relaxed mb-2">{defense.analysis}</div>
+              <div className="text-xs text-blue-300 leading-relaxed">{defense.mitigation}</div>
+              {defense.rag_sources_used?.length > 0 && (
+                <div className="mt-2 flex gap-1 flex-wrap">
+                  {defense.rag_sources_used.map(s => (
+                    <span key={s} className="text-[9px] px-1 py-0.5 bg-purple-900/30 text-purple-400 rounded font-mono">{s}</span>
+                  ))}
                 </div>
+              )}
+            </div>
+          ) : (
+            <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-3 text-center">
+              <div className="text-xs text-slate-500 italic">Blue Team analyzing...</div>
+            </div>
+          )}
+
+          {/* Timeline */}
+          <div>
+            <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Timeline</div>
+            <div className="space-y-1.5">
+              {attack.logs?.map((log, i) => (
+                <div key={i} className="text-xs text-slate-400 font-mono">{log}</div>
               ))}
             </div>
           </div>
-        )}
+        </div>
+
+        {/* Recent attacks */}
+        <div className="border-t border-slate-800 p-3 bg-slate-900/50">
+          <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Recent Attacks</div>
+          <div className="space-y-1">
+            {attacks.slice(-5).reverse().map(a => (
+              <div key={a.id} className="flex items-center gap-2 text-[10px]">
+                <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                  a.status === "BLOCKED" ? "bg-green-500" : a.status === "SUCCESS" ? "bg-red-500" : "bg-yellow-500"
+                }`} />
+                <span className="text-slate-400 truncate flex-1">{a.type}</span>
+                <span className={`shrink-0 font-mono ${
+                  a.status === "BLOCKED" ? "text-green-400" : a.status === "SUCCESS" ? "text-red-400" : "text-yellow-400"
+                }`}>{a.status}</span>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
+  );
+}
+
+function getAttackNodeStatus(attack) {
+  if (attack.status === "BLOCKED" || attack.status === "SUCCESS") return "done";
+  if (attack.status === "DETECTED") return "done";
+  return "active";
+}
+
+function getDefenseNodeStatus(defense) {
+  if (!defense) return "idle";
+  if (defense.status === "BLOCKED" || defense.status === "FAILED") return "done";
+  return "active";
+}
+
+function StatusBadge({ status }) {
+  const map = {
+    BLOCKED:     "bg-green-900/30 text-green-400",
+    FAILED:      "bg-red-900/30 text-red-400",
+    DETECTED:    "bg-orange-900/30 text-orange-400",
+    IN_PROGRESS: "bg-yellow-900/30 text-yellow-400",
+    INITIATED:   "bg-slate-800 text-slate-400",
+    ANALYZING:   "bg-blue-900/30 text-blue-400",
+    MITIGATING:  "bg-blue-900/30 text-blue-400",
+    SUCCESS:     "bg-red-900/30 text-red-400",
+  };
+  return (
+    <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${map[status] || "bg-slate-800 text-slate-400"}`}>
+      {status}
+    </span>
   );
 }

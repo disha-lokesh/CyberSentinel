@@ -1,7 +1,9 @@
 import { useMemo } from "react";
 import { Shield, Skull, Activity, CheckCircle, Clock, Zap } from "lucide-react";
 
-export default function DashboardView({ attacks, defenses, logs, redAgents, blueAgents }) {
+export default function DashboardView({ attacks, defenses, logs, redAgents, blueAgents, analyst }) {
+  const isLead = analyst?.role?.includes("Lead");
+  
   const stats = useMemo(() => {
     const blocked = defenses.filter(d => d.status === "BLOCKED").length;
     const failed  = defenses.filter(d => d.status === "FAILED").length;
@@ -21,9 +23,13 @@ export default function DashboardView({ attacks, defenses, logs, redAgents, blue
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold text-white">SOC Dashboard</h2>
+        <h2 className="text-2xl font-bold text-white">
+          {isLead ? "SecOps Lead Dashboard" : "SOC Analyst Dashboard"}
+        </h2>
         <p className="text-slate-400 text-sm mt-1">
-          Real-time security operations — Red Team agents running autonomously
+          {isLead
+            ? "Full system visibility — Red Team autonomous, Blue Team coordination, Orchestrator control"
+            : "Read-only monitoring — Real-time attack/defense feed"}
         </p>
       </div>
 
@@ -34,6 +40,37 @@ export default function DashboardView({ attacks, defenses, logs, redAgents, blue
         <StatCard icon={Activity}    label="Active Threats" value={stats.active}     color="yellow" />
         <StatCard icon={Shield}      label="Block Rate"     value={`${stats.rate}%`} color="blue"   />
       </div>
+
+      {/* Lead-only: Orchestrator quick panel */}
+      {isLead && (
+        <div className="bg-gradient-to-r from-purple-950/30 to-slate-900/50 border border-purple-900/40 rounded-xl p-5">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 bg-purple-500 rounded-full animate-pulse" />
+              <span className="font-bold text-purple-400">Gemini 3.1 Pro — Orchestrator Access</span>
+              <span className="text-xs text-slate-500 font-mono border border-slate-700 px-2 py-0.5 rounded">LEAD ONLY</span>
+            </div>
+            <a href="#" onClick={e => { e.preventDefault(); window.dispatchEvent(new CustomEvent("navigate", { detail: "orchestrator" })); }}
+              className="text-xs text-purple-400 hover:text-purple-300 font-mono border border-purple-900/50 px-3 py-1.5 rounded-lg hover:bg-purple-900/20 transition-all">
+              Open Orchestrator →
+            </a>
+          </div>
+          <div className="grid grid-cols-3 gap-3 text-xs font-mono">
+            <div className="p-3 bg-slate-950 rounded-lg border border-slate-800">
+              <div className="text-slate-500 mb-1">Agent Model</div>
+              <div className="text-green-400">gemini-3-flash</div>
+            </div>
+            <div className="p-3 bg-slate-950 rounded-lg border border-slate-800">
+              <div className="text-slate-500 mb-1">Orchestrator</div>
+              <div className="text-purple-400">gemini-3.1-pro</div>
+            </div>
+            <div className="p-3 bg-slate-950 rounded-lg border border-slate-800">
+              <div className="text-slate-500 mb-1">RAG Engine</div>
+              <div className="text-blue-400">ChromaDB + MiniLM</div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Agents */}
       <div className="grid grid-cols-2 gap-6">

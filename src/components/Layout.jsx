@@ -4,9 +4,18 @@ import {
   Network, Bell, LogOut, ChevronRight, FileText
 } from "lucide-react";
 
-const NAV = [
+const NAV_ANALYST = [
   { section: "Operations" },
   { id: "dashboard",    icon: LayoutDashboard, label: "SOC Dashboard" },
+  { id: "workflow",     icon: Network,         label: "Agent Workflow" },
+  { id: "blue-team",    icon: Shield,          label: "Blue Team" },
+  { section: "Reports" },
+  { id: "reporting",    icon: Activity,        label: "Reports" },
+];
+
+const NAV_LEAD = [
+  { section: "Operations" },
+  { id: "dashboard",    icon: LayoutDashboard, label: "Lead Dashboard" },
   { id: "workflow",     icon: Network,         label: "Agent Workflow" },
   { id: "blue-team",    icon: Shield,          label: "Blue Team" },
   { section: "Intelligence" },
@@ -16,6 +25,8 @@ const NAV = [
 
 export default function Layout({ children, activeView, onNavigate, analyst, onLogout }) {
   const [alerts] = useState(3);
+  const isLead = analyst?.role?.includes("Lead");
+  const NAV = isLead ? NAV_LEAD : NAV_ANALYST;
 
   return (
     <div className="min-h-screen bg-[#020617] text-slate-200 flex font-sans overflow-hidden">

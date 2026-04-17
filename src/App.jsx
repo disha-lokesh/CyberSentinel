@@ -89,6 +89,13 @@ export default function App() {
     setAnalyst(a);
   };
 
+  // Handle navigate events from child components
+  useEffect(() => {
+    const handler = (e) => setView(e.detail);
+    window.addEventListener("navigate", handler);
+    return () => window.removeEventListener("navigate", handler);
+  }, []);
+
   const handleLogout = () => {
     sessionStorage.removeItem("analyst");
     setAnalyst(null);
@@ -99,10 +106,10 @@ export default function App() {
   if (!analyst) return <LoginView onLogin={handleLogin} />;
 
   const views = {
-    dashboard:    <DashboardView attacks={attacks} defenses={defenses} logs={logs} redAgents={redAgents} blueAgents={blueAgents} />,
+    dashboard:    <DashboardView attacks={attacks} defenses={defenses} logs={logs} redAgents={redAgents} blueAgents={blueAgents} analyst={analyst} />,
     "blue-team":  <BlueTeamView  agents={blueAgents} defenses={defenses} logs={logs} />,
     orchestrator: <OrchestratorView attacks={attacks} defenses={defenses} redAgents={redAgents} blueAgents={blueAgents} />,
-    workflow:     <WorkflowView attacks={attacks} defenses={defenses} />,
+    workflow:     <WorkflowView attacks={attacks} defenses={defenses} redAgents={redAgents} blueAgents={blueAgents} />,
     reporting:    <ReportingView />,
   };
 
