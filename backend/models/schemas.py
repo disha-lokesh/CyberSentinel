@@ -71,6 +71,8 @@ class AgentModel(BaseModel):
     capabilities: list[AgentCapability] = []
     memory:       AgentMemory           = Field(default_factory=AgentMemory)
     logs:         list[str]             = []
+    system_prompt:  str = ""
+    training_data:  str = ""
 
 
 class AttackResult(BaseModel):
