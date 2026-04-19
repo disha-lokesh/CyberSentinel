@@ -46,6 +46,44 @@ class OrchestratorAgent(BaseAgent):
             ),
         ))
 
+    async def _call_gemini_safe(self, prompt, blocked, failed, total, recent_attacks, recent_defenses) -> str:
+        """Try Gemini, fall back to data-driven analysis if API unavailable."""
+        try:
+            return await self._call_gemini(prompt, temperature=0.7, model=ORCHESTRATOR_MODEL)
+        except Exception as e:
+            import logging
+            logging.getLogger("orchestrator").warning(f"Gemini unavailable: {e.__class__.__name__}, using data-driven fallback")
+            return self._build_fallback_analysis(blocked, failed, total, recent_attacks, recent_defenses)
+
+    def _build_fallback_analysis(self, blocked, failed, total, recent_attacks, recent_defenses) -> str:
+        """Generate a realistic analysis from actual attack/defense data without Gemini."""
+        rate = round(blocked / total * 100) if total else 0
+        severity = "CRITICAL" if failed > 2 else "HIGH" if failed > 0 else "MEDIUM" if total > 5 else "LOW"
+        posture = (
+            f"System is under active attack with {total} incidents recorded. "
+            f"Blue Team has blocked {blocked}/{total} attacks ({rate}% success rate). "
+            f"{'CRITICAL: {failed} attacks succeeded — immediate escalation required.' if failed > 0 else 'All detected attacks have been successfully mitigated.'}"
+        )
+        recs = [
+            f"Increase monitoring frequency — {total} attacks detected in current session",
+            f"{'Investigate {failed} successful attacks for lateral movement' if failed > 0 else 'Maintain current WAF and SIEM rule effectiveness'}",
+            "Run Gemini Orchestrator analysis by adding a valid GEMINI_API_KEY to backend/.env",
+        ]
+        vulns = [
+            "API key not configured — Gemini AI analysis unavailable",
+            f"{'Active breach detected — {failed} unmitigated attacks' if failed > 0 else 'No active breaches detected'}",
+        ]
+        import json
+        return json.dumps({
+            "threat_assessment": posture,
+            "recommendations": recs,
+            "vulnerabilities": vulns,
+            "agent_directives": {
+                "Sentinel-AI": f"Maintain SIEM monitoring — {total} events logged",
+                "Guardian-Firewall": f"WAF blocking at {rate}% efficiency",
+            }
+        })
+
     async def analyze_system_state(
         self,
         attacks:          list[AttackResult],
@@ -78,9 +116,9 @@ class OrchestratorAgent(BaseAgent):
             '"agent_directives":{"Sentinel-AI":"directive","Guardian-Firewall":"directive"}}',
             rag,
         )
-        raw    = await self._call_gemini(prompt, temperature=0.7, model=ORCHESTRATOR_MODEL)
+        raw    = await self._call_gemini_safe(prompt, blocked, failed, len(defenses), recent_attacks, recent_defenses)
         parsed = self._parse_json(raw, {
-            "threat_assessment": raw[:300],
+            "threat_assessment": raw[:300] if raw else "Analysis unavailable",
             "recommendations": ["Review attack patterns", "Strengthen defenses"],
             "vulnerabilities": ["Unknown"],
         })
