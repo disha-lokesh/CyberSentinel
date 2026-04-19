@@ -8,7 +8,7 @@ const ANALYSTS = [
   { username: "forensics",password: "forensic1", name: "James Rivera", role: "Forensics Analyst", clearance: "SECRET" },
 ];
 
-export default function LoginView({ onLogin }) {
+export default function LoginView({ onLogin, onSwitchToCompany }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPw,   setShowPw]   = useState(false);
@@ -160,6 +160,12 @@ export default function LoginView({ onLogin }) {
         <p className="text-center text-slate-600 text-xs mt-6 font-mono">
           Powered by Gemini 3 · Gemini 3 Hackathon 2025
         </p>
+        {onSwitchToCompany && (
+          <button onClick={onSwitchToCompany}
+            className="mt-3 w-full flex items-center justify-center gap-2 text-sm text-slate-500 hover:text-slate-300 transition-colors">
+            ← Back to AcmeCorp Portal
+          </button>
+        )}
       </div>
     </div>
   );

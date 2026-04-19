@@ -14,14 +14,14 @@ logger = logging.getLogger("red_team")
 ALL_ATTACKS = list(AttackType)
 
 TARGETS = [
-    "Enterprise Web Application",
-    "Corporate VPN Gateway",
-    "Internal LDAP Server",
-    "Customer Database",
-    "CI/CD Pipeline",
-    "Email Server",
-    "API Gateway",
-    "Admin Portal",
+    "AcmeCorp CRM Portal",
+    "AcmeCorp Finance Dashboard",
+    "AcmeCorp Employee Login Page",
+    "AcmeCorp Customer Database",
+    "AcmeCorp Admin Panel",
+    "AcmeCorp API Gateway",
+    "AcmeCorp VPN Gateway",
+    "AcmeCorp Email Server",
 ]
 
 # Realistic fallback strategies per attack type (used when Gemini API unavailable)
