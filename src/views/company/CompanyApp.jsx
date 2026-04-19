@@ -2,9 +2,9 @@ import { useState, useEffect } from "react";
 import {
   Building2, LayoutDashboard, Users, DollarSign, BarChart3,
   Settings, Bell, LogOut, Search, ChevronDown, AlertTriangle,
-  Shield, TrendingUp, Package, FileText, Wifi, WifiOff
+  Shield, TrendingUp, Package, FileText, Wifi, WifiOff, Zap
 } from "lucide-react";
-import { connectWS } from "../../api/client";
+import { connectWS, api } from "../../api/client";
 
 const NAV = [
   { id: "dashboard", icon: LayoutDashboard, label: "Dashboard" },
@@ -16,29 +16,43 @@ const NAV = [
   { id: "settings",  icon: Settings,        label: "Settings" },
 ];
 
-export default function CompanyApp({ user, onLogout }) {
-  const [view,    setView]    = useState("dashboard");
-  const [attacks, setAttacks] = useState([]);
-  const [alert,   setAlert]   = useState(null);
-  const [wsStatus, setWsStatus] = useState("connecting");
+// Map company pages to realistic attack types
+const PAGE_ATTACK_MAP = {
+  crm:      { type: "SQL Injection",    target: "AcmeCorp CRM Portal" },
+  finance:  { type: "Data Exfiltration",target: "AcmeCorp Finance Dashboard" },
+  analytics:{ type: "Cross-Site Scripting", target: "AcmeCorp Analytics Module" },
+  products: { type: "Privilege Escalation", target: "AcmeCorp Product Catalog" },
+  reports:  { type: "Data Exfiltration",target: "AcmeCorp Reports Server" },
+  settings: { type: "Brute Force",      target: "AcmeCorp Admin Settings" },
+  dashboard:{ type: "Phishing Campaign",target: "AcmeCorp Employee Dashboard" },
+};
 
-  // Connect to SOC backend to receive attack notifications
+export default function CompanyApp({ user, onLogout }) {
+  const [view,      setView]      = useState("dashboard");
+  const [attacks,   setAttacks]   = useState([]);
+  const [alert,     setAlert]     = useState(null);
+  const [wsStatus,  setWsStatus]  = useState("connecting");
+  const [attacking, setAttacking] = useState(false);
+
+  // Connect to SOC backend WebSocket
   useEffect(() => {
     let ws;
     try {
       ws = connectWS((event, payload) => {
+        if (event === "connected") {
+          setWsStatus("connected");
+          if (payload.attacks) setAttacks(payload.attacks);
+        }
         if (event === "attack_initiated" || event === "attack_updated") {
           setAttacks(prev => {
             const exists = prev.find(a => a.id === payload.id);
             return exists ? prev.map(a => a.id === payload.id ? payload : a) : [...prev, payload];
           });
-          // Show alert banner for new attacks
           if (event === "attack_initiated") {
-            setAlert({ type: payload.type, target: payload.target, agent: payload.agent_name });
-            setTimeout(() => setAlert(null), 6000);
+            setAlert({ type: payload.type, target: payload.target });
+            setTimeout(() => setAlert(null), 7000);
           }
         }
-        if (event === "connected") setWsStatus("connected");
       });
       ws.onopen  = () => setWsStatus("connected");
       ws.onerror = () => setWsStatus("error");
@@ -47,7 +61,21 @@ export default function CompanyApp({ user, onLogout }) {
     return () => ws?.close();
   }, []);
 
-  const activeAttacks = attacks.filter(a => ["INITIATED","IN_PROGRESS","DETECTED"].includes(a.status));
+  // Trigger a manual attack from the current page
+  const triggerManualAttack = async () => {
+    if (attacking) return;
+    setAttacking(true);
+    const { type, target } = PAGE_ATTACK_MAP[view] || PAGE_ATTACK_MAP.dashboard;
+    try {
+      await api.launchManualAttack(type, target);
+    } catch (e) {
+      console.error("Manual attack failed:", e);
+    } finally {
+      setTimeout(() => setAttacking(false), 3000);
+    }
+  };
+
+  const activeAttacks  = attacks.filter(a => ["INITIATED","IN_PROGRESS","DETECTED"].includes(a.status));
   const blockedAttacks = attacks.filter(a => a.status === "BLOCKED");
 
   return (
@@ -68,21 +96,16 @@ export default function CompanyApp({ user, onLogout }) {
           {NAV.map(({ id, icon: Icon, label }) => (
             <button key={id} onClick={() => setView(id)}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all ${
-                view === id
-                  ? "bg-blue-50 text-blue-700 font-semibold"
-                  : "text-slate-600 hover:bg-slate-50 hover:text-slate-800"
+                view === id ? "bg-blue-50 text-blue-700 font-semibold" : "text-slate-600 hover:bg-slate-50 hover:text-slate-800"
               }`}>
-              <Icon size={18} />
-              {label}
+              <Icon size={18} />{label}
             </button>
           ))}
         </nav>
 
         {/* Security status */}
         <div className={`mx-3 mb-3 p-3 rounded-lg border text-xs ${
-          activeAttacks.length > 0
-            ? "bg-red-50 border-red-200"
-            : "bg-green-50 border-green-200"
+          activeAttacks.length > 0 ? "bg-red-50 border-red-200" : "bg-green-50 border-green-200"
         }`}>
           <div className="flex items-center gap-2 mb-1">
             {activeAttacks.length > 0
@@ -123,13 +146,27 @@ export default function CompanyApp({ user, onLogout }) {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            {/* SOC connection status */}
+            {/* Simulate attack button */}
+            <button
+              onClick={triggerManualAttack}
+              disabled={attacking}
+              title={`Simulate ${PAGE_ATTACK_MAP[view]?.type || "attack"} on this page`}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${
+                attacking
+                  ? "bg-red-100 border-red-300 text-red-500 animate-pulse cursor-not-allowed"
+                  : "bg-red-50 border-red-200 text-red-600 hover:bg-red-100"
+              }`}>
+              <Zap size={12} />
+              {attacking ? "Attacking..." : "Simulate Attack"}
+            </button>
+
             <div className={`flex items-center gap-1.5 text-xs px-2 py-1 rounded-full ${
               wsStatus === "connected" ? "bg-green-50 text-green-600" : "bg-slate-100 text-slate-400"
             }`}>
               {wsStatus === "connected" ? <Wifi size={12} /> : <WifiOff size={12} />}
-              SOC {wsStatus === "connected" ? "Connected" : "Offline"}
+              SOC {wsStatus === "connected" ? "Live" : "Offline"}
             </div>
+
             <button className="relative p-2 text-slate-400 hover:text-slate-600 transition-colors">
               <Bell size={18} />
               {activeAttacks.length > 0 && (
@@ -138,6 +175,7 @@ export default function CompanyApp({ user, onLogout }) {
                 </span>
               )}
             </button>
+
             <div className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer hover:text-slate-800">
               <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold">
                 {user.avatar}
@@ -150,15 +188,15 @@ export default function CompanyApp({ user, onLogout }) {
 
         {/* Attack alert banner */}
         {alert && (
-          <div className="mx-8 mt-4 p-4 bg-red-50 border border-red-200 rounded-xl flex items-center gap-3 animate-in slide-in-from-top-2 duration-300">
+          <div className="mx-8 mt-4 p-4 bg-red-50 border border-red-200 rounded-xl flex items-center gap-3">
             <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center shrink-0">
               <AlertTriangle size={16} className="text-red-500" />
             </div>
             <div className="flex-1">
               <p className="text-sm font-semibold text-red-800">Security Alert: {alert.type} Detected</p>
-              <p className="text-xs text-red-600">Target: {alert.target} · SOC team has been notified and is responding</p>
+              <p className="text-xs text-red-600">Target: {alert.target} · SOC Blue Team is responding automatically</p>
             </div>
-            <span className="text-xs text-red-400 font-mono">SOC RESPONDING</span>
+            <span className="text-xs text-red-400 font-mono bg-red-100 px-2 py-1 rounded">SOC RESPONDING</span>
           </div>
         )}
 
@@ -167,9 +205,9 @@ export default function CompanyApp({ user, onLogout }) {
           {view === "dashboard" && <CompanyDashboard user={user} attacks={attacks} />}
           {view === "crm"       && <CRMPage attacks={attacks} />}
           {view === "finance"   && <FinancePage attacks={attacks} />}
-          {view === "analytics" && <AnalyticsPage />}
-          {view === "products"  && <ProductsPage />}
-          {view === "reports"   && <ReportsPage />}
+          {view === "analytics" && <PlaceholderPage title="Analytics" desc="Business intelligence and data visualization" icon={BarChart3} attacks={attacks} />}
+          {view === "products"  && <PlaceholderPage title="Products" desc="Product catalog and inventory management" icon={Package} attacks={attacks} />}
+          {view === "reports"   && <PlaceholderPage title="Reports" desc="Generate and export business reports" icon={FileText} attacks={attacks} />}
           {view === "settings"  && <SettingsPage user={user} />}
         </div>
       </main>
@@ -177,32 +215,26 @@ export default function CompanyApp({ user, onLogout }) {
   );
 }
 
-// ── Company Dashboard ─────────────────────────────────────────
 function CompanyDashboard({ user, attacks }) {
   const active  = attacks.filter(a => ["INITIATED","IN_PROGRESS","DETECTED"].includes(a.status));
   const blocked = attacks.filter(a => a.status === "BLOCKED");
-
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-2xl font-bold text-slate-800">Good morning, {user.name.split(" ")[0]} 👋</h2>
         <p className="text-slate-500 mt-1">Here's what's happening at AcmeCorp today.</p>
       </div>
-
-      {/* KPI cards */}
       <div className="grid grid-cols-4 gap-4">
         {[
-          { label: "Monthly Revenue",  value: "$2.4M",  change: "+12%",  color: "blue",  icon: DollarSign },
-          { label: "Active Users",     value: "1,284",  change: "+5%",   color: "green", icon: Users },
-          { label: "Open Tickets",     value: "47",     change: "-8%",   color: "orange",icon: FileText },
-          { label: "System Uptime",    value: "99.8%",  change: "stable",color: "purple",icon: TrendingUp },
-        ].map(({ label, value, change, color, icon: Icon }) => (
+          { label: "Monthly Revenue", value: "$2.4M",  change: "+12%",  icon: DollarSign, color: "blue" },
+          { label: "Active Users",    value: "1,284",  change: "+5%",   icon: Users,      color: "green" },
+          { label: "Open Tickets",    value: "47",     change: "-8%",   icon: FileText,   color: "orange" },
+          { label: "System Uptime",   value: "99.8%",  change: "stable",icon: TrendingUp, color: "purple" },
+        ].map(({ label, value, change, icon: Icon, color }) => (
           <div key={label} className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
             <div className="flex items-center justify-between mb-3">
               <span className="text-slate-500 text-sm">{label}</span>
-              <div className={`p-2 rounded-lg bg-${color}-50`}>
-                <Icon size={18} className={`text-${color}-500`} />
-              </div>
+              <div className="p-2 rounded-lg bg-slate-50"><Icon size={18} className="text-slate-400" /></div>
             </div>
             <div className="text-2xl font-bold text-slate-800">{value}</div>
             <div className={`text-xs mt-1 ${change.startsWith("+") ? "text-green-500" : change.startsWith("-") ? "text-red-500" : "text-slate-400"}`}>
@@ -212,7 +244,6 @@ function CompanyDashboard({ user, attacks }) {
         ))}
       </div>
 
-      {/* Security incidents on this system */}
       {attacks.length > 0 && (
         <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
           <div className="flex items-center gap-2 mb-4">
@@ -221,15 +252,17 @@ function CompanyDashboard({ user, attacks }) {
             <span className="ml-auto text-xs text-slate-400">{blocked.length} blocked · {active.length} active</span>
           </div>
           <div className="space-y-2">
-            {attacks.slice(-5).reverse().map(a => (
+            {attacks.slice(-6).reverse().map(a => (
               <div key={a.id} className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg border border-slate-100">
                 <div className={`w-2 h-2 rounded-full shrink-0 ${
-                  a.status === "BLOCKED" ? "bg-green-500" :
-                  a.status === "SUCCESS" ? "bg-red-500" : "bg-yellow-500 animate-pulse"
+                  a.status === "BLOCKED" ? "bg-green-500" : a.status === "SUCCESS" ? "bg-red-500" : "bg-yellow-500 animate-pulse"
                 }`} />
                 <div className="flex-1 min-w-0">
                   <span className="text-sm font-medium text-slate-700">{a.type}</span>
                   <span className="text-xs text-slate-400 ml-2">on {a.target}</span>
+                  {a.agent_name?.includes("Manual") && (
+                    <span className="ml-2 text-[10px] px-1.5 py-0.5 bg-orange-100 text-orange-600 rounded font-mono">MANUAL</span>
+                  )}
                 </div>
                 <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
                   a.status === "BLOCKED"     ? "bg-green-100 text-green-700" :
@@ -246,19 +279,18 @@ function CompanyDashboard({ user, attacks }) {
         </div>
       )}
 
-      {/* Recent activity */}
       <div className="grid grid-cols-2 gap-6">
         <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
           <h3 className="font-semibold text-slate-800 mb-4">Recent Activity</h3>
           <div className="space-y-3">
             {[
-              { action: "New deal closed",    user: "Bob Smith",    time: "2m ago",  color: "green" },
-              { action: "Support ticket #847",user: "Carol Davis",  time: "15m ago", color: "blue" },
-              { action: "Invoice generated",  user: "Finance Bot",  time: "1h ago",  color: "purple" },
-              { action: "User onboarded",     user: "HR System",    time: "2h ago",  color: "orange" },
+              { action: "New deal closed",     user: "Bob Smith",   time: "2m ago" },
+              { action: "Support ticket #847", user: "Carol Davis", time: "15m ago" },
+              { action: "Invoice generated",   user: "Finance Bot", time: "1h ago" },
+              { action: "User onboarded",      user: "HR System",   time: "2h ago" },
             ].map((item, i) => (
               <div key={i} className="flex items-center gap-3">
-                <div className={`w-2 h-2 rounded-full bg-${item.color}-500`} />
+                <div className="w-2 h-2 rounded-full bg-blue-400" />
                 <div className="flex-1">
                   <span className="text-sm text-slate-700">{item.action}</span>
                   <span className="text-xs text-slate-400 ml-2">by {item.user}</span>
@@ -268,7 +300,6 @@ function CompanyDashboard({ user, attacks }) {
             ))}
           </div>
         </div>
-
         <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
           <h3 className="font-semibold text-slate-800 mb-4">Team Overview</h3>
           <div className="space-y-3">
@@ -293,9 +324,8 @@ function CompanyDashboard({ user, attacks }) {
   );
 }
 
-// ── CRM Page ──────────────────────────────────────────────────
 function CRMPage({ attacks }) {
-  const crmAttacks = attacks.filter(a => a.target?.includes("CRM") || a.type === "SQL Injection" || a.type === "Data Exfiltration");
+  const relevant = attacks.filter(a => a.target?.includes("CRM") || a.type === "SQL Injection");
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -303,22 +333,21 @@ function CRMPage({ attacks }) {
           <h2 className="text-2xl font-bold text-slate-800">Customer Relationship Management</h2>
           <p className="text-slate-500 text-sm mt-1">Manage leads, contacts, and deals</p>
         </div>
-        {crmAttacks.some(a => a.status !== "BLOCKED") && (
+        {relevant.some(a => !["BLOCKED","SUCCESS"].includes(a.status)) && (
           <div className="flex items-center gap-2 px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600">
-            <AlertTriangle size={14} />
-            Attack detected on this module
+            <AlertTriangle size={14} />SQL Injection detected on this module
           </div>
         )}
       </div>
       <div className="grid grid-cols-3 gap-4">
         {[
-          { label: "Total Leads",    value: "342",  color: "blue" },
-          { label: "Active Deals",   value: "89",   color: "green" },
+          { label: "Total Leads",    value: "342",   color: "blue" },
+          { label: "Active Deals",   value: "89",    color: "green" },
           { label: "Won This Month", value: "$180K", color: "purple" },
         ].map(({ label, value, color }) => (
           <div key={label} className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
             <div className="text-slate-500 text-sm mb-2">{label}</div>
-            <div className={`text-2xl font-bold text-${color}-600`}>{value}</div>
+            <div className="text-2xl font-bold text-slate-800">{value}</div>
           </div>
         ))}
       </div>
@@ -338,7 +367,12 @@ function CRMPage({ attacks }) {
               <tr key={i} className="hover:bg-slate-50">
                 <td className="px-5 py-3 font-medium text-slate-800">{r.name}</td>
                 <td className="px-5 py-3 text-slate-500">{r.company}</td>
-                <td className="px-5 py-3"><span className={`px-2 py-0.5 rounded-full text-xs font-medium ${r.status === "Active" ? "bg-green-100 text-green-700" : r.status === "Closed" ? "bg-blue-100 text-blue-700" : "bg-yellow-100 text-yellow-700"}`}>{r.status}</span></td>
+                <td className="px-5 py-3">
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                    r.status === "Active" ? "bg-green-100 text-green-700" :
+                    r.status === "Closed" ? "bg-blue-100 text-blue-700" : "bg-yellow-100 text-yellow-700"
+                  }`}>{r.status}</span>
+                </td>
                 <td className="px-5 py-3 text-slate-700 font-medium">{r.value}</td>
                 <td className="px-5 py-3 text-slate-400">{r.last}</td>
               </tr>
@@ -350,9 +384,8 @@ function CRMPage({ attacks }) {
   );
 }
 
-// ── Finance Page ──────────────────────────────────────────────
 function FinancePage({ attacks }) {
-  const finAttacks = attacks.filter(a => a.target?.includes("Database") || a.type === "Data Exfiltration");
+  const relevant = attacks.filter(a => a.target?.includes("Finance") || a.type === "Data Exfiltration");
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -360,18 +393,18 @@ function FinancePage({ attacks }) {
           <h2 className="text-2xl font-bold text-slate-800">Finance</h2>
           <p className="text-slate-500 text-sm mt-1">Revenue, expenses, and financial reports</p>
         </div>
-        {finAttacks.some(a => a.status !== "BLOCKED") && (
+        {relevant.some(a => !["BLOCKED","SUCCESS"].includes(a.status)) && (
           <div className="flex items-center gap-2 px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600">
-            <AlertTriangle size={14} />Potential data breach detected
+            <AlertTriangle size={14} />Data exfiltration attempt detected
           </div>
         )}
       </div>
       <div className="grid grid-cols-4 gap-4">
         {[
-          { label: "Revenue",   value: "$2.4M",  change: "+12%" },
-          { label: "Expenses",  value: "$1.1M",  change: "+3%" },
-          { label: "Profit",    value: "$1.3M",  change: "+22%" },
-          { label: "Cash Flow", value: "$890K",  change: "+8%" },
+          { label: "Revenue",   value: "$2.4M", change: "+12%" },
+          { label: "Expenses",  value: "$1.1M", change: "+3%" },
+          { label: "Profit",    value: "$1.3M", change: "+22%" },
+          { label: "Cash Flow", value: "$890K", change: "+8%" },
         ].map(({ label, value, change }) => (
           <div key={label} className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
             <div className="text-slate-500 text-sm mb-2">{label}</div>
@@ -384,10 +417,10 @@ function FinancePage({ attacks }) {
         <h3 className="font-semibold text-slate-800 mb-4">Recent Transactions</h3>
         <div className="space-y-2">
           {[
-            { desc: "Enterprise License - TechCorp",  amount: "+$45,000", date: "Today",     type: "income" },
-            { desc: "AWS Infrastructure",             amount: "-$8,200",  date: "Yesterday", type: "expense" },
-            { desc: "Consulting Services - StartupXYZ",amount: "+$12,000",date: "2 days ago",type: "income" },
-            { desc: "Office Supplies",                amount: "-$340",    date: "3 days ago",type: "expense" },
+            { desc: "Enterprise License - TechCorp",    amount: "+$45,000", date: "Today",     type: "income" },
+            { desc: "AWS Infrastructure",               amount: "-$8,200",  date: "Yesterday", type: "expense" },
+            { desc: "Consulting - StartupXYZ",          amount: "+$12,000", date: "2 days ago",type: "income" },
+            { desc: "Office Supplies",                  amount: "-$340",    date: "3 days ago",type: "expense" },
           ].map((t, i) => (
             <div key={i} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
               <div>
@@ -403,16 +436,21 @@ function FinancePage({ attacks }) {
   );
 }
 
-// ── Simple placeholder pages ──────────────────────────────────
-function AnalyticsPage() {
-  return <PlaceholderPage title="Analytics" desc="Business intelligence and data visualization" icon={BarChart3} />;
+function PlaceholderPage({ title, desc, icon: Icon, attacks }) {
+  return (
+    <div className="flex items-center justify-center h-96">
+      <div className="text-center">
+        <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+          <Icon size={32} className="text-slate-400" />
+        </div>
+        <h2 className="text-xl font-bold text-slate-700">{title}</h2>
+        <p className="text-slate-400 mt-2">{desc}</p>
+        <p className="text-slate-300 text-xs mt-4">Click "Simulate Attack" in the header to trigger an attack on this page</p>
+      </div>
+    </div>
+  );
 }
-function ProductsPage() {
-  return <PlaceholderPage title="Products" desc="Product catalog and inventory management" icon={Package} />;
-}
-function ReportsPage() {
-  return <PlaceholderPage title="Reports" desc="Generate and export business reports" icon={FileText} />;
-}
+
 function SettingsPage({ user }) {
   return (
     <div className="space-y-6">
@@ -428,20 +466,6 @@ function SettingsPage({ user }) {
           ))}
           <button className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-all">Save Changes</button>
         </div>
-      </div>
-    </div>
-  );
-}
-
-function PlaceholderPage({ title, desc, icon: Icon }) {
-  return (
-    <div className="flex items-center justify-center h-96">
-      <div className="text-center">
-        <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
-          <Icon size={32} className="text-slate-400" />
-        </div>
-        <h2 className="text-xl font-bold text-slate-700">{title}</h2>
-        <p className="text-slate-400 mt-2">{desc}</p>
       </div>
     </div>
   );

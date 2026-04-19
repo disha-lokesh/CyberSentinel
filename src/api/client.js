@@ -20,6 +20,13 @@ export const api = {
 
   orchestratorAnalyze: () =>
     fetch(`${BASE}/orchestrator/analyze`, { method: "POST" }).then(r => r.json()),
+
+  launchManualAttack: (attack_type, target) =>
+    fetch(`${BASE}/attack/manual`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ attack_type, target }),
+    }).then(r => r.json()),
 };
 
 /**

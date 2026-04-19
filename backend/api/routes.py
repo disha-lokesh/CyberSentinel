@@ -3,7 +3,7 @@ FastAPI routes — REST + WebSocket endpoints.
 All AI work is delegated to Python agent classes.
 """
 from __future__ import annotations
-import asyncio, json, time
+import asyncio, json, time, uuid
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException
 from backend.models.schemas import (
     LaunchAttackRequest, AttackResult, DefenseResult,
@@ -54,21 +54,43 @@ def get_orchestrator():
 
 # ── REST: attacks ─────────────────────────────────────────────
 
+@router.post("/attack/manual")
+async def manual_attack(req: LaunchAttackRequest):
+    """Triggered from the company portal when an employee triggers a suspicious action."""
+    from backend.api.autonomous_red_team import ATTACK_AGENT_NAMES, FALLBACK_STRATEGIES
+    import uuid
+    red_name, blue_name = ATTACK_AGENT_NAMES.get(req.attack_type, ("Exploit-Dev", "Sentinel-AI"))
+    fb = FALLBACK_STRATEGIES[req.attack_type]
+    attack = AttackResult(
+        id=f"manual-{uuid.uuid4().hex[:8]}",
+        type=req.attack_type,
+        agent_id="manual",
+        agent_name=f"{red_name} (Manual)",
+        timestamp=time.time(),
+        target=req.target,
+        strategy=fb["strategy"],
+        payload=fb["payload"],
+        expected_impact=fb["expected_impact"],
+        status=AttackStatus.INITIATED,
+        rag_sources_used=[],
+        logs=[f"[{time.strftime('%H:%M:%S')}] Manual attack triggered on {req.target}"],
+    )
+    _attacks.append(attack)
+    await _broadcast("attack_initiated", attack.model_dump())
+    asyncio.create_task(_progress_attack(attack))
+    return attack
+
+
+@router.post("/attack/launch")
 @router.post("/attack/launch")
 async def launch_attack(req: LaunchAttackRequest):
     agent = ATTACK_AGENT_MAP.get(req.attack_type)
     if not agent:
         raise HTTPException(400, f"No agent for {req.attack_type}")
-
-    # Execute attack via Gemini 3
     attack = await agent.execute_attack(req.attack_type, req.target)
     _attacks.append(attack)
-
     await _broadcast("attack_initiated", attack.model_dump())
-
-    # Progress attack status asynchronously
     asyncio.create_task(_progress_attack(attack))
-
     return attack
 
 
