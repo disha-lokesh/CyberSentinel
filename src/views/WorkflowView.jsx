@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { Zap, Shield, Database, Server, Activity, Globe, Lock, Mail, Wifi, FileX, ShieldAlert } from "lucide-react";
 
 const ICON_MAP = { Zap, Shield, Database, Server, Activity, Globe, Lock, Mail, Wifi, FileX, ShieldAlert };
@@ -140,32 +140,67 @@ const RED_NODES   = new Set(["attacker","botnet"]);
 const BLUE_NODES  = new Set(["sentinel","guardian","forensic","patch"]);
 const SOC_NODES   = new Set(["soc"]);
 
+// Returns: "idle" | "active" | "done" | "failed"
 function nodeStatus(id, attack, defense) {
   if (!attack) return "idle";
-  if (RED_NODES.has(id)) return attack.status === "INITIATED" ? "active" : "done";
+
+  if (RED_NODES.has(id)) {
+    if (attack.status === "INITIATED")   return "active";
+    if (attack.status === "SUCCESS")     return "done";   // attack succeeded = red node done (bad)
+    return "done";
+  }
+
   if (SOC_NODES.has(id)) {
     if (!defense) return "idle";
-    return ["BLOCKED","FAILED"].includes(defense.status) ? "done" : "active";
+    if (defense.status === "BLOCKED")    return "done";
+    if (defense.status === "FAILED")     return "failed";
+    return "active";
   }
+
   if (BLUE_NODES.has(id)) {
     if (!defense) return "idle";
-    return ["BLOCKED","FAILED"].includes(defense.status) ? "done" : "active";
+    if (defense.status === "ANALYZING")  return "active";
+    if (defense.status === "MITIGATING") return "active";
+    if (defense.status === "BLOCKED")    return "done";
+    if (defense.status === "FAILED")     return "failed";
+    return "idle";
   }
-  // target/intermediate nodes
-  if (["IN_PROGRESS","DETECTED","BLOCKED","SUCCESS"].includes(attack.status)) return "active";
+
+  // Target / intermediate nodes
+  if (attack.status === "INITIATED")     return "idle";
+  if (attack.status === "IN_PROGRESS")   return "active";
+  if (attack.status === "DETECTED")      return "active";
+  if (attack.status === "BLOCKED")       return "done";
+  if (attack.status === "SUCCESS")       return "failed";  // attack succeeded = target compromised
   return "idle";
 }
 
 function edgeActive(edge, attack, defense) {
   if (!attack) return false;
-  const isRed = RED_NODES.has(edge.from);
-  const isDef = BLUE_NODES.has(edge.from) || BLUE_NODES.has(edge.to) || SOC_NODES.has(edge.to);
-  if (isRed) return ["IN_PROGRESS","DETECTED","BLOCKED","SUCCESS"].includes(attack.status);
-  if (isDef) return !!defense && ["ANALYZING","MITIGATING","BLOCKED","FAILED"].includes(defense.status);
+  const isRed  = RED_NODES.has(edge.from);
+  const isDef  = BLUE_NODES.has(edge.from) || BLUE_NODES.has(edge.to) || SOC_NODES.has(edge.to);
+  if (isRed)  return ["IN_PROGRESS","DETECTED","BLOCKED","SUCCESS"].includes(attack.status);
+  if (isDef)  return !!defense && ["ANALYZING","MITIGATING","BLOCKED","FAILED"].includes(defense.status);
   return ["DETECTED","BLOCKED","SUCCESS"].includes(attack.status);
 }
 
-const BORDER = { red:"#ef4444", blue:"#3b82f6", green:"#10b981", slate:"#64748b", orange:"#f97316", purple:"#8b5cf6" };
+// Border color per node state
+function nodeBorderColor(status, nodeColor) {
+  const BORDER = { red:"#ef4444", blue:"#3b82f6", green:"#10b981", slate:"#64748b", orange:"#f97316", purple:"#8b5cf6" };
+  if (status === "active")  return "#facc15";
+  if (status === "done")    return BORDER[nodeColor] || "#64748b";
+  if (status === "failed")  return "#ef4444";
+  return "#1e293b";
+}
+
+function nodeGlow(status, nodeColor) {
+  const GLOW = { red:"239,68,68", blue:"59,130,246", green:"16,185,129", slate:"100,116,139", orange:"249,115,22" };
+  if (status === "active")  return `0 0 24px rgba(250,204,21,0.5)`;
+  if (status === "done")    return `0 0 16px rgba(${GLOW[nodeColor]||"100,116,139"},0.4)`;
+  if (status === "failed")  return `0 0 24px rgba(239,68,68,0.6)`;
+  return "none";
+}
+
 const NODE_W = 140, NODE_H = 64;
 
 function StatusBadge({ status }) {
@@ -180,6 +215,21 @@ function StatusBadge({ status }) {
 
 export default function WorkflowView({ attacks, defenses }) {
   const [selId, setSelId] = useState(null);
+
+  // Auto-follow latest attack in real-time unless user has manually selected one
+  const [userSelected, setUserSelected] = useState(false);
+  useEffect(() => {
+    if (!userSelected && attacks.length) {
+      setSelId(attacks[attacks.length - 1].id);
+    }
+  }, [attacks, defenses, userSelected]);
+
+  // Reset auto-follow after 30s of inactivity
+  useEffect(() => {
+    if (!userSelected) return;
+    const t = setTimeout(() => setUserSelected(false), 30000);
+    return () => clearTimeout(t);
+  }, [userSelected]);
 
   const latest  = attacks.length ? attacks[attacks.length-1] : null;
   const selAtk  = selId ? (attacks.find(a=>a.id===selId)||latest) : latest;
@@ -245,18 +295,30 @@ export default function WorkflowView({ attacks, defenses }) {
           {topo.nodes.map(n=>{
             const Icon=ICON_MAP[n.icon]||Activity;
             const st=nodeStatus(n.id,selAtk,selDef);
-            const bc=st==="active"?"#facc15":st==="done"?(BORDER[n.color]||"#64748b"):"#1e293b";
+            const bc=nodeBorderColor(st, n.color);
+            const glow=nodeGlow(st, n.color);
             return (
               <div key={n.id}
-                className={`absolute rounded-xl border-2 flex flex-col justify-center px-3 select-none transition-all duration-300 ${st==="active"?"bg-slate-800 scale-105":st==="done"?"bg-slate-900/90":"bg-slate-950"}`}
-                style={{left:n.x,top:n.y,width:NODE_W,height:NODE_H,borderColor:bc,boxShadow:st==="active"?`0 0 24px ${bc}55`:"none"}}>
+                className={`absolute rounded-xl border-2 flex flex-col justify-center px-3 select-none transition-all duration-500 ${
+                  st==="active"  ? "bg-slate-800 scale-105" :
+                  st==="done"    ? "bg-slate-900/90" :
+                  st==="failed"  ? "bg-red-950/40" :
+                  "bg-slate-950"
+                }`}
+                style={{left:n.x,top:n.y,width:NODE_W,height:NODE_H,borderColor:bc,boxShadow:glow}}>
                 <div className="flex items-center gap-2 mb-0.5">
-                  <Icon size={15} className={st==="active"?"text-yellow-400":st==="done"?"text-white":"text-slate-500"} />
+                  <Icon size={15} className={
+                    st==="active"  ? "text-yellow-400" :
+                    st==="done"    ? "text-white" :
+                    st==="failed"  ? "text-red-400" :
+                    "text-slate-500"
+                  } />
                   <span className="text-xs font-bold text-white truncate">{n.label}</span>
                 </div>
                 <div className="text-[9px] text-slate-500 uppercase tracking-wide">{n.sub}</div>
-                {st==="active"&&<div className="text-[9px] text-yellow-400 font-mono animate-pulse mt-0.5">● active</div>}
-                {st==="done"  &&<div className="text-[9px] text-emerald-400 font-mono mt-0.5">✓ done</div>}
+                {st==="active"  && <div className="text-[9px] text-yellow-400 font-mono animate-pulse mt-0.5">● active</div>}
+                {st==="done"    && <div className="text-[9px] text-emerald-400 font-mono mt-0.5">✓ done</div>}
+                {st==="failed"  && <div className="text-[9px] text-red-400 font-mono mt-0.5 animate-pulse">✗ failed</div>}
               </div>
             );
           })}
@@ -264,14 +326,27 @@ export default function WorkflowView({ attacks, defenses }) {
 
         {attacks.length>1&&(
           <div className="sticky bottom-0 bg-slate-950/90 border-t border-slate-800 p-3 flex gap-2 overflow-x-auto">
+            <button
+              onClick={() => { setUserSelected(false); setSelId(null); }}
+              className={`shrink-0 px-3 py-1.5 rounded-lg text-xs border transition-all ${
+                !userSelected ? "border-blue-500 bg-blue-900/30 text-blue-400" : "border-slate-700 bg-slate-900 text-slate-500 hover:border-slate-600"
+              }`}>
+              ● Live
+            </button>
             {attacks.slice(-8).reverse().map(a=>(
-              <button key={a.id} onClick={()=>setSelId(a.id===selId?null:a.id)}
+              <button key={a.id} onClick={()=>{ setSelId(a.id); setUserSelected(true); }}
                 className={`shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs border transition-all ${
-                  (selId===a.id||(!selId&&a.id===latest?.id))?"border-blue-500 bg-blue-900/30 text-white":"border-slate-700 bg-slate-900 text-slate-400 hover:border-slate-600"
+                  selId===a.id&&userSelected?"border-blue-500 bg-blue-900/30 text-white":"border-slate-700 bg-slate-900 text-slate-400 hover:border-slate-600"
                 }`}>
-                <div className={`w-1.5 h-1.5 rounded-full ${a.status==="BLOCKED"?"bg-green-500":a.status==="SUCCESS"?"bg-red-500":"bg-yellow-500 animate-pulse"}`}/>
+                <div className={`w-1.5 h-1.5 rounded-full ${
+                  a.status==="BLOCKED"?"bg-green-500":
+                  a.status==="SUCCESS"?"bg-red-500 animate-pulse":
+                  a.status==="FAILED"?"bg-red-500":
+                  "bg-yellow-500 animate-pulse"
+                }`}/>
                 <span className="truncate max-w-[100px]">{a.type}</span>
                 {a.agent_name?.includes("Manual")&&<span className="text-orange-400 text-[9px]">M</span>}
+                {a.agent_name?.includes("Real")&&<span className="text-red-400 text-[9px]">!</span>}
               </button>
             ))}
           </div>

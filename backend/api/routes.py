@@ -4,7 +4,7 @@ All AI work is delegated to Python agent classes.
 """
 from __future__ import annotations
 import asyncio, json, time, uuid
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, Request
 from backend.models.schemas import (
     LaunchAttackRequest, AttackResult, DefenseResult,
     AttackStatus, DefenseStatus,
@@ -207,6 +207,86 @@ def _build_timeline() -> list[dict]:
         events.append({"time": time.strftime("%H:%M", time.localtime(d.timestamp)),
                         "event": f"{d.agent_name}: {d.mitigation[:60]}", "type": "defense"})
     return sorted(events, key=lambda x: x["time"], reverse=True)[:15]
+
+
+# ── Real HTTP Attack Detection ────────────────────────────────
+
+from pydantic import BaseModel
+
+class ScanRequest(BaseModel):
+    method:    str = "GET"
+    path:      str = "/"
+    query:     str = ""
+    body:      str = ""
+    source_ip: str = "unknown"
+
+
+@router.post("/scan")
+async def scan_request(req: ScanRequest):
+    """
+    Real-time HTTP request scanner.
+    Called by AcmeCorp frontend on every form submit, search, login.
+    Returns detected attack or clean status.
+    """
+    from backend.detection.http_analyzer import analyze_request
+    from backend.api.autonomous_red_team import FALLBACK_DEFENSES, ATTACK_AGENT_NAMES
+
+    result = analyze_request(
+        method=req.method,
+        path=req.path,
+        query=req.query,
+        body=req.body,
+        source_ip=req.source_ip,
+    )
+
+    if not result or not result.detected:
+        return {"detected": False, "clean": True}
+
+    # Real attack detected — create attack record and trigger defense
+    red_name, blue_name = ATTACK_AGENT_NAMES.get(result.attack_type, ("Exploit-Dev", "Sentinel-AI"))
+    fb = FALLBACK_DEFENSES.get(result.attack_type, {})
+
+    attack = AttackResult(
+        id=f"real-{uuid.uuid4().hex[:8]}",
+        type=result.attack_type,
+        agent_id="real-detection",
+        agent_name=f"Real Attack ({result.rule_name})",
+        timestamp=result.timestamp,
+        target=f"AcmeCorp{result.target_path}",
+        strategy=f"Real {result.attack_type.value} detected by HTTP analyzer. Rule: {result.rule_name}",
+        payload=result.evidence,
+        expected_impact=f"Severity: {result.severity} | Confidence: {result.confidence}%",
+        status=AttackStatus.DETECTED,
+        rag_sources_used=[],
+        logs=[
+            f"[{time.strftime('%H:%M:%S')}] REAL ATTACK DETECTED on {result.target_path}",
+            f"[{time.strftime('%H:%M:%S')}] Rule: {result.rule_name}",
+            f"[{time.strftime('%H:%M:%S')}] Evidence: {result.evidence[:80]}",
+            f"[{time.strftime('%H:%M:%S')}] Source IP: {result.source_ip}",
+        ],
+    )
+    _attacks.append(attack)
+    await _broadcast("attack_initiated", attack.model_dump())
+
+    # Immediately trigger Blue Team defense
+    asyncio.create_task(_auto_defend(attack))
+
+    return {
+        "detected":    True,
+        "attack_type": result.attack_type.value,
+        "rule":        result.rule_name,
+        "severity":    result.severity,
+        "confidence":  result.confidence,
+        "evidence":    result.evidence,
+        "attack_id":   attack.id,
+        "message":     f"⚠️ {result.rule_name} blocked. SOC team notified.",
+    }
+
+
+@router.get("/detection/stats")
+def detection_stats():
+    from backend.detection.http_analyzer import get_stats
+    return get_stats()
 
 
 # ── WebSocket ─────────────────────────────────────────────────

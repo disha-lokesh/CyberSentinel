@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Building2, Eye, EyeOff, Lock, User, AlertTriangle, ChevronRight } from "lucide-react";
+import { api } from "../../api/client";
 
 const COMPANY_USERS = [
   { username: "alice",   password: "alice123",   name: "Alice Johnson",  role: "Product Manager",    dept: "Product",  avatar: "AJ" },
@@ -19,6 +20,17 @@ export default function CompanyLogin({ onLogin, onSwitchToSOC }) {
     e.preventDefault();
     setError("");
     setLoading(true);
+
+    // Real scan on login attempt
+    try {
+      const scan = await api.scanRequest("POST", "/login", "", `username=${username}&password=${password}`);
+      if (scan.detected) {
+        setError(`⚠️ Attack detected: ${scan.attack_type} — ${scan.message}`);
+        setLoading(false);
+        return;
+      }
+    } catch { /* scan unavailable, continue */ }
+
     await new Promise(r => setTimeout(r, 600));
     const user = COMPANY_USERS.find(u => u.username === username.toLowerCase() && u.password === password);
     if (user) { onLogin({ ...user, type: "employee" }); }

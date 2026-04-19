@@ -27,6 +27,14 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ attack_type, target }),
     }).then(r => r.json()),
+
+  // Real HTTP attack scanner — call on every form submit, search, login
+  scanRequest: (method, path, query = "", body = "") =>
+    fetch(`${BASE}/scan`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ method, path, query, body, source_ip: "browser" }),
+    }).then(r => r.json()).catch(() => ({ detected: false })),
 };
 
 /**

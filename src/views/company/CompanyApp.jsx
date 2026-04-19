@@ -1,8 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Building2, LayoutDashboard, Users, DollarSign, BarChart3,
   Settings, Bell, LogOut, Search, ChevronDown, AlertTriangle,
-  Shield, TrendingUp, Package, FileText, Wifi, WifiOff, Zap
+  Shield, TrendingUp, Package, FileText, Wifi, WifiOff, Zap, AlertCircle
 } from "lucide-react";
 import { connectWS, api } from "../../api/client";
 
@@ -28,11 +28,13 @@ const PAGE_ATTACK_MAP = {
 };
 
 export default function CompanyApp({ user, onLogout }) {
-  const [view,      setView]      = useState("dashboard");
-  const [attacks,   setAttacks]   = useState([]);
-  const [alert,     setAlert]     = useState(null);
-  const [wsStatus,  setWsStatus]  = useState("connecting");
-  const [attacking, setAttacking] = useState(false);
+  const [view,       setView]       = useState("dashboard");
+  const [attacks,    setAttacks]    = useState([]);
+  const [alert,      setAlert]      = useState(null);
+  const [wsStatus,   setWsStatus]   = useState("connecting");
+  const [attacking,  setAttacking]  = useState(false);
+  const [searchVal,  setSearchVal]  = useState("");
+  const [scanAlert,  setScanAlert]  = useState(null);  // real detection alert
 
   // Connect to SOC backend WebSocket
   useEffect(() => {
@@ -60,6 +62,18 @@ export default function CompanyApp({ user, onLogout }) {
     } catch { setWsStatus("error"); }
     return () => ws?.close();
   }, []);
+
+  // Real HTTP scan on search/form submit
+  const handleSearch = async (e) => {
+    e.preventDefault();
+    if (!searchVal.trim()) return;
+    const result = await api.scanRequest("GET", `/${view}/search`, `q=${encodeURIComponent(searchVal)}`);
+    if (result.detected) {
+      setScanAlert(result);
+      setTimeout(() => setScanAlert(null), 8000);
+    }
+    setSearchVal("");
+  };
 
   // Trigger a manual attack from the current page
   const triggerManualAttack = async () => {
@@ -140,10 +154,15 @@ export default function CompanyApp({ user, onLogout }) {
         {/* Header */}
         <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-8 sticky top-0 z-10 shadow-sm">
           <div className="flex items-center gap-3">
-            <div className="relative">
+            <form onSubmit={handleSearch} className="relative">
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input placeholder="Search..." className="pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500 w-64" />
-            </div>
+              <input
+                value={searchVal}
+                onChange={e => setSearchVal(e.target.value)}
+                placeholder="Search... (try: ' OR 1=1)"
+                className="pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500 w-72"
+              />
+            </form>
           </div>
           <div className="flex items-center gap-3">
             {/* Simulate attack button */}
@@ -186,7 +205,26 @@ export default function CompanyApp({ user, onLogout }) {
           </div>
         </header>
 
-        {/* Attack alert banner */}
+        {/* Real detection alert */}
+        {scanAlert && (
+          <div className="mx-8 mt-4 p-4 bg-orange-50 border border-orange-200 rounded-xl flex items-center gap-3">
+            <div className="w-8 h-8 bg-orange-100 rounded-full flex items-center justify-center shrink-0">
+              <AlertCircle size={16} className="text-orange-500" />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-orange-800">
+                🚨 Real Attack Detected: {scanAlert.attack_type}
+              </p>
+              <p className="text-xs text-orange-600">
+                Rule: {scanAlert.rule} · Severity: {scanAlert.severity} · Confidence: {scanAlert.confidence}%
+              </p>
+              <p className="text-xs text-orange-500 font-mono mt-1">Evidence: {scanAlert.evidence}</p>
+            </div>
+            <span className="text-xs text-orange-400 font-mono bg-orange-100 px-2 py-1 rounded">BLOCKED</span>
+          </div>
+        )}
+
+        {/* Autonomous attack alert banner */}
         {alert && (
           <div className="mx-8 mt-4 p-4 bg-red-50 border border-red-200 rounded-xl flex items-center gap-3">
             <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center shrink-0">
