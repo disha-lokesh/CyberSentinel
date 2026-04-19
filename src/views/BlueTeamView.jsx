@@ -34,21 +34,35 @@ export default function BlueTeamView({ agents, defenses, logs }) {
 
       {/* Agents */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {agents.map(a => (
-          <div key={a.id} className="bg-slate-900/50 border border-blue-900/30 rounded-xl p-4">
-            <div className="font-bold text-white">{a.name}</div>
-            <div className="text-xs text-slate-400 mb-2">{a.role}</div>
-            <div className={`text-xs font-mono px-2 py-1 rounded text-center ${
-              a.status === "ANALYZING"  ? "bg-yellow-900/30 text-yellow-400" :
-              a.status === "MITIGATING" ? "bg-blue-900/30 text-blue-400" :
-              "bg-slate-800 text-slate-500"
-            }`}>{a.status}</div>
-            <div className="text-xs text-slate-500 mt-2 truncate">{a.current_task}</div>
-            <div className="mt-2 h-1 bg-slate-800 rounded-full">
-              <div className="h-full bg-blue-500 rounded-full" style={{ width: `${a.efficiency}%` }} />
+        {agents.map(a => {
+          const agentDefs = defenses.filter(d => d.agent_name === a.name);
+          const blocked   = agentDefs.filter(d => d.status === "BLOCKED").length;
+          const total     = agentDefs.length;
+          const rate      = total > 0 ? Math.round(blocked / total * 100) : a.efficiency;
+          const barColor  = rate >= 80 ? "bg-blue-500" : rate >= 50 ? "bg-yellow-500" : "bg-red-500";
+          return (
+            <div key={a.id} className="bg-slate-900/50 border border-blue-900/30 rounded-xl p-4">
+              <div className="font-bold text-white">{a.name}</div>
+              <div className="text-xs text-slate-400 mb-2">{a.role}</div>
+              <div className={`text-xs font-mono px-2 py-1 rounded text-center ${
+                a.status === "ANALYZING"  ? "bg-yellow-900/30 text-yellow-400" :
+                a.status === "MITIGATING" ? "bg-blue-900/30 text-blue-400" :
+                "bg-slate-800 text-slate-500"
+              }`}>{a.status}</div>
+              <div className="text-xs text-slate-500 mt-2 truncate">{a.current_task}</div>
+              {/* Real success rate bar */}
+              <div className="mt-2 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all duration-1000 ${barColor}`}
+                  style={{ width: `${rate}%` }}
+                />
+              </div>
+              <div className="text-[10px] text-slate-600 mt-1">
+                {total > 0 ? `${blocked}/${total} blocked (${rate}%)` : `Efficiency: ${a.efficiency}%`}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Defense Operations */}

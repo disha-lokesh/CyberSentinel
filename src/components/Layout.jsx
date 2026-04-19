@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   LayoutDashboard, Shield, BrainCircuit, Activity,
   Network, Bell, LogOut, ChevronRight, FileText
@@ -25,6 +25,11 @@ const NAV_LEAD = [
 
 export default function Layout({ children, activeView, onNavigate, analyst, onLogout }) {
   const [alerts] = useState(3);
+  const [now, setNow] = useState(new Date());
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(t);
+  }, []);
   const isLead = analyst?.role?.includes("Lead");
   const NAV = isLead ? NAV_LEAD : NAV_ANALYST;
 
@@ -121,7 +126,7 @@ export default function Layout({ children, activeView, onNavigate, analyst, onLo
               SYSTEM ONLINE
             </span>
             <span className="text-slate-500 text-xs border-l border-slate-700 pl-4 font-mono">
-              {new Date().toLocaleString()}
+              {now.toLocaleTimeString()} · {now.toLocaleDateString()}
             </span>
           </div>
 

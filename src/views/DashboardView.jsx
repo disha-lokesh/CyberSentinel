@@ -1,8 +1,18 @@
-import { useMemo } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { Shield, Skull, Activity, CheckCircle, Clock, Zap } from "lucide-react";
+
+function useLiveClock() {
+  const [now, setNow] = useState(new Date());
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  return now;
+}
 
 export default function DashboardView({ attacks, defenses, logs, redAgents, blueAgents, analyst }) {
   const isLead = analyst?.role?.includes("Lead");
+  const now    = useLiveClock();
   
   const stats = useMemo(() => {
     const blocked = defenses.filter(d => d.status === "BLOCKED").length;
@@ -26,11 +36,14 @@ export default function DashboardView({ attacks, defenses, logs, redAgents, blue
         <h2 className="text-2xl font-bold text-white">
           {isLead ? "SecOps Lead Dashboard" : "SOC Analyst Dashboard"}
         </h2>
-        <p className="text-slate-400 text-sm mt-1">
-          {isLead
-            ? "Full system visibility — Red Team autonomous, Blue Team coordination, Orchestrator control"
-            : "Read-only monitoring — Real-time attack/defense feed"}
-        </p>
+        <div className="flex items-center gap-3 mt-1">
+          <p className="text-slate-400 text-sm">
+            {isLead ? "Full system visibility — Gemini 3 agents running" : "Read-only monitoring — Real-time feed"}
+          </p>
+          <span className="text-slate-600 text-xs font-mono ml-auto">
+            {now.toLocaleTimeString()} · {now.toLocaleDateString()}
+          </span>
+        </div>
       </div>
 
       {/* Stats */}
@@ -88,7 +101,7 @@ export default function DashboardView({ attacks, defenses, logs, redAgents, blue
               <p className="text-slate-600 text-sm italic">Connecting to backend...</p>
             )}
             {redAgents.map(a => (
-              <AgentRow key={a.id} agent={a} color="red" />
+              <AgentRow key={a.id} agent={a} color="red" defenses={[]} />
             ))}
           </div>
         </div>
@@ -105,7 +118,7 @@ export default function DashboardView({ attacks, defenses, logs, redAgents, blue
               <p className="text-slate-600 text-sm italic">Connecting to backend...</p>
             )}
             {blueAgents.map(a => (
-              <AgentRow key={a.id} agent={a} color="blue" />
+              <AgentRow key={a.id} agent={a} color="blue" defenses={defenses} />
             ))}
           </div>
         </div>
@@ -213,7 +226,7 @@ function StatCard({ icon: Icon, label, value, color }) {
   );
 }
 
-function AgentRow({ agent, color }) {
+function AgentRow({ agent, color, defenses }) {
   const statusColor = {
     IDLE:       "text-slate-500",
     EXECUTING:  color === "red" ? "text-red-400" : "text-blue-400",
@@ -221,6 +234,13 @@ function AgentRow({ agent, color }) {
     MITIGATING: "text-blue-400",
     PLANNING:   "text-purple-400",
   }[agent.status] || "text-slate-400";
+
+  // Real success rate from actual defense operations
+  const agentDefenses = defenses?.filter(d => d.agent_name === agent.name) || [];
+  const blocked = agentDefenses.filter(d => d.status === "BLOCKED").length;
+  const total   = agentDefenses.length;
+  const realRate = total > 0 ? Math.round(blocked / total * 100) : agent.efficiency;
+  const barColor = color === "red" ? "bg-red-500" : realRate >= 80 ? "bg-blue-500" : realRate >= 50 ? "bg-yellow-500" : "bg-red-500";
 
   // Show unique capabilities per agent
   const caps = agent.capabilities?.slice(0, 2).map(c => c.name).join(", ") || "";
@@ -237,10 +257,18 @@ function AgentRow({ agent, color }) {
       <div className="flex-1 min-w-0">
         <div className="text-sm font-bold text-white">{agent.name}</div>
         <div className="text-[10px] text-slate-500 truncate">{caps}</div>
+        <div className="mt-1.5 h-1 bg-slate-800 rounded-full overflow-hidden">
+          <div
+            className={`h-full rounded-full transition-all duration-1000 ${barColor}`}
+            style={{ width: `${realRate}%` }}
+          />
+        </div>
       </div>
       <div className="text-right shrink-0">
         <div className={`text-xs font-mono ${statusColor}`}>{agent.status}</div>
-        <div className="text-[10px] text-slate-600">{agent.efficiency}%</div>
+        <div className="text-[10px] text-slate-500 mt-0.5">
+          {total > 0 ? `${blocked}/${total} blocked` : `${agent.efficiency}%`}
+        </div>
       </div>
     </div>
   );
